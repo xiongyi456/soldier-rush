@@ -12,35 +12,57 @@
 <title>士兵冲锋 3D</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; min-height: 100dvh; overflow: hidden; background: #000; font-family: "Microsoft YaHei", sans-serif; touch-action: none; overscroll-behavior: none; }
+  html, body { width: 100%; height: 100%; min-height: 100dvh; overflow: hidden; background: #8fd8ff; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; touch-action: none; overscroll-behavior: none; user-select: none; }
   #cv { display: block; width: 100%; height: 100%; }
+  #vignette, #screenFlash, #speedFx { position: fixed; inset: 0; pointer-events: none; }
+  #vignette {
+    z-index: 2;
+    background: radial-gradient(circle at 50% 44%, transparent 44%, rgba(25,48,82,.08) 74%, rgba(15,28,52,.24) 115%);
+  }
+  #screenFlash { z-index: 8; opacity: 0; mix-blend-mode: screen; }
+  #speedFx {
+    z-index: 1; opacity: 0; transition: opacity .2s;
+    background: repeating-linear-gradient(104deg, transparent 0 9vw, rgba(255,255,255,.18) 9.2vw 9.35vw, transparent 9.55vw 18vw);
+    transform: scale(1.25); filter: blur(1px);
+  }
 
   /* ---------- HUD ---------- */
   #hud {
     position: fixed; top: 0; left: 0; right: 0;
-    display: flex; gap: 18px; align-items: center;
+    z-index: 6; display: flex; gap: 10px; align-items: center;
     padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left));
-    background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0));
-    color: #fff; font-size: 17px; font-weight: bold;
-    pointer-events: none; text-shadow: 1px 1px 2px #000;
+    background: linear-gradient(rgba(16,35,62,.42), rgba(16,35,62,0));
+    color: #fff; font-size: 15px; font-weight: 900;
+    pointer-events: none; text-shadow: 0 2px 3px rgba(12,28,50,.55);
   }
-  #hud .score { color: #ffd54f; }
-  #hud .kills { color: #ff8a65; }
-  #hud .army  { color: #8bc34a; }
-  #hud .dist  { color: #4fc3f7; margin-left: auto; }
+  #hud span {
+    padding: 7px 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 15px;
+    background: linear-gradient(145deg, rgba(30,55,87,.76), rgba(17,34,59,.55));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 4px 12px rgba(17,35,60,.18);
+    backdrop-filter: blur(7px);
+  }
+  #hud span.pop { animation: hudPop .24s ease-out; }
+  #hud .score { color: #ffd966; }
+  #hud .kills { color: #ff9b86; }
+  #hud .army  { color: #a8ec6b; }
+  #hud .dist  { color: #72dcff; margin-left: auto; }
   #buffs {
+    z-index: 6;
     position: fixed; top: calc(46px + env(safe-area-inset-top)); left: calc(16px + env(safe-area-inset-left)); right: calc(16px + env(safe-area-inset-right));
     display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
   }
   #buffs span {
-    background: rgba(0,0,0,.55); color: #fff;
-    padding: 4px 10px; border-radius: 14px; font-size: 13px; font-weight: bold;
+    background: rgba(20,39,67,.72); color: #fff; border: 1px solid rgba(255,255,255,.18);
+    padding: 5px 11px; border-radius: 14px; font-size: 12px; font-weight: 900;
+    box-shadow: 0 4px 10px rgba(11,28,50,.16); backdrop-filter: blur(6px);
   }
 
   /* ---------- 开始/结束界面 ---------- */
   #overlay {
     position: fixed; inset: 0;
-    background: rgba(10, 15, 30, .78);
+    background:
+      radial-gradient(circle at 50% 28%, rgba(68,145,211,.34), transparent 38%),
+      linear-gradient(180deg, rgba(12,28,52,.68), rgba(12,24,46,.82));
     color: #fff; text-align: center; z-index: 10;
     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     touch-action: pan-y;
@@ -50,19 +72,34 @@
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     padding: max(24px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   }
-  #overlay h1 { font-size: 46px; margin-bottom: 14px; color: #ffd54f; text-shadow: 3px 3px 0 #000; }
-  #overlay p { font-size: 15px; line-height: 1.9; color: #ccc; max-width: 560px; }
+  #overlay h1 {
+    font-size: 48px; margin-bottom: 14px; color: #ffe46d; letter-spacing: 2px;
+    text-shadow: 0 4px 0 #b66b13, 0 8px 18px rgba(0,0,0,.42);
+    animation: titleFloat 2.8s ease-in-out infinite;
+  }
+  #overlay p { font-size: 15px; line-height: 1.9; color: #d9e8f7; max-width: 600px; text-shadow: 0 2px 3px rgba(0,0,0,.4); }
   #overlay .items { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px 0; max-width: 520px; }
-  #overlay .items span { background: rgba(255,255,255,.1); padding: 5px 12px; border-radius: 14px; font-size: 14px; font-weight: bold; }
+  #overlay .items span {
+    background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.07));
+    border: 1px solid rgba(255,255,255,.15); padding: 5px 12px; border-radius: 14px;
+    font-size: 14px; font-weight: 900; box-shadow: inset 0 1px rgba(255,255,255,.16);
+  }
   #overlay .big { font-size: 22px; margin: 12px 0; }
   #overlay button {
     margin-top: 20px; padding: 13px 52px;
     min-height: 50px;
-    font-size: 21px; font-weight: bold; color: #fff;
-    background: linear-gradient(#4caf50, #2e7d32);
-    border: none; border-radius: 30px; cursor: pointer;
-    box-shadow: 0 5px 0 #1b5e20;
+    position: relative; overflow: hidden;
+    font-size: 21px; font-weight: 900; color: #fff;
+    background: linear-gradient(180deg, #7ee45d, #33ad43 65%, #269137);
+    border: 2px solid rgba(255,255,255,.35); border-radius: 30px; cursor: pointer;
+    box-shadow: 0 6px 0 #19742b, 0 12px 28px rgba(35,181,67,.32), inset 0 2px 0 rgba(255,255,255,.36);
+    text-shadow: 0 2px 2px rgba(12,67,25,.45); transition: transform .12s, filter .12s;
   }
+  #overlay button::after {
+    content: ""; position: absolute; top: -60%; left: -25%; width: 22%; height: 220%;
+    background: rgba(255,255,255,.26); transform: rotate(22deg); animation: buttonShine 3.1s ease-in-out infinite;
+  }
+  #overlay button:hover { filter: brightness(1.08); transform: translateY(-1px); }
   #overlay button:active { transform: translateY(3px); box-shadow: 0 2px 0 #1b5e20; }
   #overlay button.secondary {
     margin-top: 12px; padding: 10px 28px; min-height: 44px;
@@ -70,6 +107,19 @@
     border: 1px solid rgba(255,255,255,.28); box-shadow: none;
   }
   #overlay button.secondary:active { box-shadow: none; }
+  #overlay.game-over .intro-line,
+  #overlay.game-over .items,
+  #overlay.game-over .rules,
+  #overlay.game-over #installBtn,
+  #overlay.game-over .install-tip { display: none !important; }
+  #overlay.game-over h1 { font-size: 38px; margin-bottom: 18px; }
+  #overlay.game-over .big {
+    min-width: min(88vw, 420px); padding: 20px 24px; margin: 0 0 10px;
+    border: 1px solid rgba(255,255,255,.22); border-radius: 22px;
+    background: linear-gradient(145deg, rgba(35,65,102,.82), rgba(17,35,61,.72));
+    box-shadow: inset 0 1px rgba(255,255,255,.18), 0 18px 40px rgba(5,17,35,.28);
+    line-height: 1.65; animation: resultPop .38s ease-out;
+  }
   .install-tip { display: none; margin-top: 12px; font-size: 12px !important; color: #9fb3cc !important; }
   #controlHint {
     position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -80,8 +130,14 @@
   #controlHint.show { opacity: 1; }
   .hidden { display: none !important; }
 
+  @keyframes titleFloat { 0%,100% { transform: translateY(0) rotate(-.5deg); } 50% { transform: translateY(-5px) rotate(.5deg); } }
+  @keyframes buttonShine { 0%,58% { left: -28%; } 82%,100% { left: 118%; } }
+  @keyframes hudPop { 0% { transform: scale(1); } 45% { transform: scale(1.16); } 100% { transform: scale(1); } }
+  @keyframes resultPop { 0% { opacity: 0; transform: scale(.78) translateY(18px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+
   @media (max-width: 700px), (pointer: coarse) {
-    #hud { gap: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top)); font-size: 13px; }
+    #hud { gap: 5px; padding-top: calc(7px + env(safe-area-inset-top)); font-size: 11px; }
+    #hud span { padding: 6px 7px; border-radius: 12px; }
     #buffs { top: calc(38px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); right: calc(10px + env(safe-area-inset-right)); gap: 5px; }
     #buffs span { padding: 3px 8px; font-size: 11px; }
     #overlayContent { justify-content: flex-start; padding-top: max(28px, env(safe-area-inset-top)); }
@@ -105,6 +161,9 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
+<div id="speedFx"></div>
+<div id="vignette"></div>
+<div id="screenFlash"></div>
 <div id="controlHint">按住屏幕左右滑动来移动小队</div>
 
 <div id="hud" class="hidden">
@@ -118,7 +177,7 @@
 <div id="overlay">
  <div id="overlayContent">
   <h1>士兵冲锋 3D</h1>
-  <p><span id="controlText">← → 或 A / D 移动小队（支持鼠标 / 触屏拖动）</span><br>
+  <p class="intro-line"><span id="controlText">← → 或 A / D 移动小队（支持鼠标 / 触屏拖动）</span><br>
      士兵自动射击,箱子上有数字,击中相应次数获得道具!</p>
   <div class="items">
     <span style="color:#8bc34a">+1兵</span>
@@ -130,11 +189,9 @@
     <span style="color:#fff176">时间减缓</span>
     <span style="color:#ffd54f">金币</span>
   </div>
-  <p>选择门效果随机:<b style="color:#8bc34a">增益</b>(攻击+3 / 射速+20% / +2兵)或 <b style="color:#ef5350">减益</b>(攻击-3 / 射速-20% / -2兵),看清再穿!<br>
-     <b style="color:#fbc02d">警示墙壁</b>会撞倒挡路的士兵并阻挡子弹,全员被撞则游戏结束,瞄准缺口躲避!<br>
-     连续击杀触发连锁:<b style="color:#ffb300">×5 暴击模式</b> → <b style="color:#ba68c8">×10 子弹扩散</b> → <b style="color:#fff176">×15 时间减速</b><br>
-     敌军分层:<b style="color:#e57373">普通兵</b>(1血) / <b style="color:#90a4ae">盾兵</b>(高血持盾) / <b style="color:#b71c1c">重装兵</b>(慢速,撞击-2兵)<br>
-     敌兵碰到小队会损失士兵(护盾可抵挡),全灭则游戏结束!</p>
+  <p class="rules"><b style="color:#8bc34a">选对发光门</b>强化小队 · 打爆箱子获得随机道具<br>
+     <b style="color:#fbc02d">左右滑动</b>躲开警示墙和敌军 · 士兵会自动开火<br>
+     连杀奖励：<b style="color:#ffb300">×5 暴击</b> → <b style="color:#ba68c8">×10 散弹</b> → <b style="color:#fff176">×15 减速</b></p>
   <div class="big" id="resultText"></div>
   <button id="startBtn">开始游戏</button>
   <button id="installBtn" class="secondary hidden">安装到手机桌面</button>
@@ -155,14 +212,31 @@ const SPAWN_Z = -100;         // 敌人生成位置
 const PLAYER_Z = 0;
 
 const mobileDevice = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const lowPowerDevice = mobileDevice && (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const lowPowerDevice = mobileDevice && (!navigator.deviceMemory || navigator.deviceMemory <= 4);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("cv"), antialias: !lowPowerDevice, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobileDevice ? (lowPowerDevice ? 1 : 1.35) : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.96;
+
+function makeSkyTexture() {
+  const c = document.createElement("canvas");
+  c.width = 32; c.height = 512;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, "#66c8ff");
+  grad.addColorStop(0.48, "#b8e6ff");
+  grad.addColorStop(1, "#eef8ff");
+  g.fillStyle = grad; g.fillRect(0, 0, 32, 512);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87c5eb);
-scene.fog = new THREE.Fog(0x87c5eb, 55, 130);
+scene.background = makeSkyTexture();
+scene.fog = new THREE.Fog(0xc9eaff, 58, 138);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
 const cameraBase = { y: 9.5, z: 11, lookZ: -20 };
@@ -182,10 +256,41 @@ function updateCameraLayout() {
 }
 updateCameraLayout();
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x556b3f, 0.9));
-const sun = new THREE.DirectionalLight(0xfff4d6, 1.0);
+scene.add(new THREE.HemisphereLight(0xf4fbff, 0x5b7651, 1.3));
+const sun = new THREE.DirectionalLight(0xfff0c7, 1.4);
 sun.position.set(15, 30, 10);
 scene.add(sun);
+const skyFill = new THREE.DirectionalLight(0x78bfff, 0.55);
+skyFill.position.set(-18, 12, -25);
+scene.add(skyFill);
+
+function makeSunGlow() {
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(64, 64, 7, 64, 64, 64);
+  grad.addColorStop(0, "rgba(255,252,214,1)");
+  grad.addColorStop(.22, "rgba(255,225,135,.9)");
+  grad.addColorStop(1, "rgba(255,210,110,0)");
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: .78, depthWrite: false, fog: false, toneMapped: false }));
+  sp.position.set(-23, 24, -118); sp.scale.set(28, 28, 1);
+  return sp;
+}
+scene.add(makeSunGlow());
+
+const mountainMat = [0x79a98e, 0x6d9c87, 0x8bb69a].map(color =>
+  new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true })
+);
+for (let i = 0; i < 9; i++) {
+  const h = 10 + Math.random() * 12;
+  const mountain = new THREE.Mesh(new THREE.ConeGeometry(7 + Math.random() * 8, h, 5), mountainMat[i % mountainMat.length]);
+  mountain.position.set(-42 + i * 10 + randSeed(i) * 4, h / 2 - 1.5, -124 - (i % 3) * 4);
+  mountain.rotation.y = i * .7;
+  scene.add(mountain);
+}
+
+function randSeed(n) { return ((Math.sin(n * 91.37) + 1) * .5); }
 
 window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -197,34 +302,46 @@ function makeGroundTexture() {
   const c = document.createElement("canvas");
   c.width = 512; c.height = 512;
   const g = c.getContext("2d");
-  // 草地
-  g.fillStyle = "#5a8a4a"; g.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 250; i++) {
-    g.fillStyle = Math.random() < .5 ? "#528043" : "#639454";
-    g.fillRect(Math.random() * 512, Math.random() * 512, 5, 5);
+  // 明亮低多边形草地
+  const grass = g.createLinearGradient(0, 0, 512, 0);
+  grass.addColorStop(0, "#72bd69"); grass.addColorStop(.5, "#86ce74"); grass.addColorStop(1, "#72bd69");
+  g.fillStyle = grass; g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 180; i++) {
+    g.fillStyle = Math.random() < .5 ? "rgba(56,138,73,.17)" : "rgba(213,244,151,.16)";
+    const s = 3 + Math.random() * 8;
+    g.fillRect(Math.random() * 512, Math.random() * 512, s, s * .55);
   }
   // 道路(中间 16/36 比例)
   const rl = 512 * (0.5 - ROAD_HALF / 36), rr = 512 * (0.5 + ROAD_HALF / 36);
-  g.fillStyle = "#9a8a6a"; g.fillRect(rl, 0, rr - rl, 512);
-  for (let i = 0; i < 120; i++) {
-    g.fillStyle = Math.random() < .5 ? "#93835f" : "#a29272";
-    g.fillRect(rl + Math.random() * (rr - rl), Math.random() * 512, 6, 6);
+  const road = g.createLinearGradient(rl, 0, rr, 0);
+  road.addColorStop(0, "#cdbd98"); road.addColorStop(.18, "#eadcba"); road.addColorStop(.5, "#f4e9cc"); road.addColorStop(.82, "#eadcba"); road.addColorStop(1, "#cdbd98");
+  g.fillStyle = road; g.fillRect(rl, 0, rr - rl, 512);
+  for (let i = 0; i < 90; i++) {
+    g.fillStyle = Math.random() < .5 ? "rgba(166,139,96,.12)" : "rgba(255,255,255,.19)";
+    const s = 3 + Math.random() * 5;
+    g.fillRect(rl + Math.random() * (rr - rl), Math.random() * 512, s, s);
   }
-  // 路边线
-  g.fillStyle = "#6e5f47";
-  g.fillRect(rl, 0, 8, 512); g.fillRect(rr - 8, 0, 8, 512);
+  // 道路软边与路缘高光
+  g.fillStyle = "#477d52"; g.fillRect(rl - 8, 0, 8, 512); g.fillRect(rr, 0, 8, 512);
+  g.fillStyle = "#fff1b8"; g.fillRect(rl, 0, 5, 512); g.fillRect(rr - 5, 0, 5, 512);
   // 中央虚线
-  g.fillStyle = "rgba(255,255,255,.55)";
-  for (let y = 0; y < 512; y += 128) g.fillRect(252, y, 8, 64);
+  g.fillStyle = "rgba(255,255,255,.78)";
+  for (let y = 0; y < 512; y += 128) g.fillRect(250, y + 10, 12, 54);
+  // 轻微前进箭头，增强速度感
+  g.strokeStyle = "rgba(255,255,255,.12)"; g.lineWidth = 7;
+  for (let y = 92; y < 512; y += 180) {
+    g.beginPath(); g.moveTo(226, y + 26); g.lineTo(256, y); g.lineTo(286, y + 26); g.stroke();
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(1, 8);
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 const groundTex = makeGroundTexture();
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(36, 240),
-  new THREE.MeshLambertMaterial({ map: groundTex })
+  new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, metalness: 0 })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.z = -90;
@@ -234,13 +351,23 @@ scene.add(ground);
 const trees = [];
 function makeTree() {
   const g = new THREE.Group();
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.3, 16),
+    new THREE.MeshBasicMaterial({ color: 0x315b45, transparent: true, opacity: 0.22, depthWrite: false })
+  );
+  shadow.rotation.x = -Math.PI / 2; shadow.position.set(.25, .015, .2); shadow.scale.y = .58;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 1.6, 6),
-    new THREE.MeshLambertMaterial({ color: 0x6d4c33 }));
+    new THREE.MeshStandardMaterial({ color: 0x8b5b3d, roughness: .9, flatShading: true }));
   trunk.position.y = 0.8;
-  const leaf = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.2, 7),
-    new THREE.MeshLambertMaterial({ color: 0x3e7a3e }));
-  leaf.position.y = 3;
-  g.add(trunk, leaf);
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: Math.random() < .5 ? 0x3f9b58 : 0x4bab65, roughness: .92, flatShading: true
+  });
+  const leafLow = new THREE.Mesh(new THREE.ConeGeometry(1.55, 2.8, 7), leafMat);
+  leafLow.position.y = 2.55;
+  const leafTop = new THREE.Mesh(new THREE.ConeGeometry(1.12, 2.35, 7), leafMat);
+  leafTop.position.y = 3.75;
+  leafTop.rotation.y = .38;
+  g.add(shadow, trunk, leafLow, leafTop);
   return g;
 }
 for (let i = 0; i < 16; i++) {
@@ -249,52 +376,120 @@ for (let i = 0; i < 16; i++) {
   t.position.set(side * (ROAD_HALF + 2.5 + Math.random() * 5), 0, -Math.random() * 130 + 8);
   const s = 0.7 + Math.random() * 0.7;
   t.scale.set(s, s, s);
+  t.userData.phase = Math.random() * Math.PI * 2;
   scene.add(t);
   trees.push(t);
 }
 
 /* ================= 3D 士兵模型 ================= */
+const soldierGeo = {
+  torso: new THREE.CapsuleGeometry(0.32, 0.3, 4, 8),
+  limb: new THREE.CapsuleGeometry(0.105, 0.28, 3, 6),
+  head: new THREE.SphereGeometry(0.27, 10, 7),
+  helmet: new THREE.SphereGeometry(0.31, 10, 6),
+  hand: new THREE.SphereGeometry(0.115, 7, 5),
+  boot: new THREE.BoxGeometry(0.24, 0.15, 0.34),
+  cube: new THREE.BoxGeometry(1, 1, 1),
+  shadow: new THREE.CircleGeometry(0.58, 18),
+};
+const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x17344b, transparent: true, opacity: 0.2, depthWrite: false });
+
 function makeSoldier(mainColor) {
   const g = new THREE.Group();
-  const mat = c => new THREE.MeshLambertMaterial({ color: c });
+  const rig = new THREE.Group();
+  g.add(rig);
+  const mat = (c, metalness = .02, roughness = .78) => new THREE.MeshStandardMaterial({
+    color: c, metalness, roughness, flatShading: true, emissive: 0x000000, emissiveIntensity: .42
+  });
   const dark = new THREE.Color(mainColor).multiplyScalar(0.55).getHex();
 
-  function box(w, h, d, color, x, y, z, pivotTop) {
-    const geo = new THREE.BoxGeometry(w, h, d);
-    if (pivotTop) geo.translate(0, -h / 2, 0);
-    const m = new THREE.Mesh(geo, mat(color));
-    m.position.set(x, y, z);
-    g.add(m);
+  function part(geo, material, x, y, z, sx = 1, sy = 1, sz = 1, parent = rig) {
+    const m = new THREE.Mesh(geo, material);
+    m.position.set(x, y, z); m.scale.set(sx, sy, sz);
+    parent.add(m);
     return m;
   }
-  // 腿(枢轴在顶部,便于摆动)
-  const legL = box(0.22, 0.5, 0.22, 0x2f3640, -0.16, 0.5, 0, true);
-  const legR = box(0.22, 0.5, 0.22, 0x2f3640,  0.16, 0.5, 0, true);
-  // 身体
-  box(0.64, 0.66, 0.38, mainColor, 0, 0.84, 0);
-  // 手臂(向前持枪)
-  box(0.16, 0.16, 0.52, mainColor, -0.30, 0.95, -0.24);
-  box(0.16, 0.16, 0.52, mainColor,  0.30, 0.95, -0.24);
-  // 头
-  box(0.36, 0.32, 0.32, 0xffcc99, 0, 1.34, 0);
-  // 头盔
-  box(0.46, 0.18, 0.42, dark, 0, 1.53, 0);
-  // 枪
-  box(0.10, 0.12, 0.75, 0x222222, 0.10, 0.96, -0.58);
-  box(0.06, 0.06, 0.2, 0x111111, 0.10, 1.02, -0.9);   // 枪管
 
+  const uniformMat = mat(mainColor);
+  const darkMat = mat(dark);
+  const skinMat = mat(0xffc697);
+  const trouserMat = mat(0x26394b);
+  const gunMat = mat(0x28323d, .42, .38);
+
+  const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .018; shadow.scale.y = .62;
+  g.add(shadow);
+
+  const legL = new THREE.Group(), legR = new THREE.Group();
+  legL.position.set(-.17, .56, 0); legR.position.set(.17, .56, 0);
+  rig.add(legL, legR);
+  part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legL);
+  part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legR);
+  part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legL);
+  part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legR);
+
+  part(soldierGeo.torso, uniformMat, 0, .98, 0, 1.04, 1, .82);
+  part(soldierGeo.cube, darkMat, 0, 1.04, -.30, .54, .46, .12); // 胸甲
+  if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, .75, -.02, .72, .13, .48); // 腰带
+
+  const head = part(soldierGeo.head, skinMat, 0, 1.55, -.01, 1, 1.03, .95);
+  part(soldierGeo.helmet, darkMat, 0, 1.68, .015, 1.06, .58, 1.06);
+  if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, 1.61, -.27, .67, .08, .5); // 帽檐
+  const face = !lowPowerDevice ? part(soldierGeo.cube, gunMat, 0, 1.55, -.265, .34, .07, .035) : null;
+
+  const armL = new THREE.Group(), armR = new THREE.Group();
+  armL.position.set(-.38, 1.24, -.02); armR.position.set(.38, 1.24, -.02);
+  armL.rotation.x = armR.rotation.x = 1.08;
+  rig.add(armL, armR);
+  part(soldierGeo.limb, uniformMat, 0, -.19, 0, 1, .9, 1, armL);
+  part(soldierGeo.limb, uniformMat, 0, -.19, 0, 1, .9, 1, armR);
+  if (!lowPowerDevice) {
+    part(soldierGeo.hand, skinMat, 0, -.39, 0, .86, .86, .86, armL);
+    part(soldierGeo.hand, skinMat, 0, -.39, 0, .86, .86, .86, armR);
+  }
+
+  const gunRig = new THREE.Group();
+  gunRig.position.set(.1, 1.14, -.58); rig.add(gunRig);
+  part(soldierGeo.cube, gunMat, 0, 0, 0, .13, .14, .76, gunRig);
+  part(soldierGeo.cube, gunMat, 0, .035, -.48, .07, .07, .28, gunRig);
+  part(soldierGeo.cube, darkMat, -.05, -.16, .08, .10, .30, .13, gunRig);
+
+  g.userData.rig = rig;
   g.userData.legs = [legL, legR];
+  g.userData.arms = [armL, armR];
+  g.userData.gunRig = gunRig;
+  g.userData.head = head;
+  g.userData.face = face;
   g.userData.phase = Math.random() * Math.PI * 2;
+  g.userData.recoil = 0;
+  g.userData.hit = 0;
+  g.userData.spawnT = 1;
+  rig.scale.setScalar(.12);
   return g;
 }
-function animateWalk(soldier, t, speed = 10, amp = 0.55) {
+function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   const p = t * speed + soldier.userData.phase;
-  soldier.userData.legs[0].rotation.x =  Math.sin(p) * amp;
-  soldier.userData.legs[1].rotation.x = -Math.sin(p) * amp;
-  soldier.position.y = Math.abs(Math.sin(p)) * 0.06;
+  const ud = soldier.userData;
+  ud.legs[0].rotation.x =  Math.sin(p) * amp;
+  ud.legs[1].rotation.x = -Math.sin(p) * amp;
+  ud.arms[0].rotation.x = 1.08 - Math.sin(p) * .09 - ud.recoil * .2;
+  ud.arms[1].rotation.x = 1.08 + Math.sin(p) * .09 - ud.recoil * .2;
+  ud.gunRig.position.z = -.58 + ud.recoil * .13;
+  ud.rig.position.y = .035 + Math.abs(Math.sin(p)) * .075;
+  ud.rig.rotation.x = Math.sin(p * 2) * .018;
+  ud.rig.rotation.z = -lean * .16 + Math.sin(p * 3) * ud.hit * .08;
+  ud.recoil *= .56;
+  ud.hit *= .72;
+
+  if (ud.spawnT > 0) {
+    ud.spawnT = Math.max(0, ud.spawnT - .065);
+    const q = 1 - ud.spawnT;
+    const k = 1 + 2.70158 * Math.pow(q - 1, 3) + 1.70158 * Math.pow(q - 1, 2);
+    ud.rig.scale.setScalar(Math.max(.08, k));
+  } else ud.rig.scale.setScalar(1);
 }
 function tintSoldier(soldier, hex) {
-  soldier.traverse(o => { if (o.isMesh) o.material.emissive.setHex(hex); });
+  soldier.traverse(o => { if (o.isMesh && o.material.emissive) o.material.emissive.setHex(hex); });
 }
 
 /* ================= 道具箱 ================= */
@@ -317,28 +512,27 @@ function pickReward() {
 
 function drawCrateFace(g, crate) {
   g.clearRect(0, 0, 256, 256);
-  // 木箱底色
-  g.fillStyle = "#a1795a"; g.fillRect(0, 0, 256, 256);
-  g.strokeStyle = "#5d4037"; g.lineWidth = 14;
-  g.strokeRect(7, 7, 242, 242);
-  g.lineWidth = 6;
+  const wood = g.createLinearGradient(0, 0, 256, 256);
+  wood.addColorStop(0, "#d89b58"); wood.addColorStop(.5, "#a96835"); wood.addColorStop(1, "#754326");
+  g.fillStyle = wood; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = "#5b331f"; g.lineWidth = 16; g.strokeRect(8, 8, 240, 240);
+  g.strokeStyle = "rgba(255,226,166,.35)"; g.lineWidth = 5; g.strokeRect(19, 19, 218, 218);
+  g.strokeStyle = "#6b3d25"; g.lineWidth = 7;
   g.beginPath();
-  g.moveTo(10, 10); g.lineTo(246, 246);
-  g.moveTo(246, 10); g.lineTo(10, 246);
+  g.moveTo(17, 17); g.lineTo(239, 239);
+  g.moveTo(239, 17); g.lineTo(17, 239);
   g.stroke();
+  g.fillStyle = "rgba(20,25,34,.72)"; g.fillRect(38, 42, 180, 103);
   // 数字
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.font = "bold 96px Arial";
-  g.strokeStyle = "#000"; g.lineWidth = 10;
-  g.strokeText(crate.count, 128, 105);
-  g.fillStyle = "#fff";
-  g.fillText(crate.count, 128, 105);
+  g.font = "900 92px Arial";
+  g.strokeStyle = "rgba(0,0,0,.72)"; g.lineWidth = 9; g.strokeText(crate.count, 128, 96);
+  g.fillStyle = "#fff7df"; g.fillText(crate.count, 128, 96);
   // 奖励标签
-  g.font = "bold 44px Microsoft YaHei";
-  g.strokeStyle = "#000"; g.lineWidth = 8;
-  g.strokeText(crate.reward.label, 128, 195);
-  g.fillStyle = crate.reward.color;
-  g.fillText(crate.reward.label, 128, 195);
+  g.fillStyle = "rgba(20,25,34,.78)"; g.fillRect(27, 164, 202, 59);
+  g.font = "900 42px Microsoft YaHei";
+  g.strokeStyle = "rgba(0,0,0,.75)"; g.lineWidth = 7; g.strokeText(crate.reward.label, 128, 194);
+  g.fillStyle = crate.reward.color; g.fillText(crate.reward.label, 128, 194);
 }
 
 function makeCrate(x, z) {
@@ -348,21 +542,29 @@ function makeCrate(x, z) {
   canvas.width = 256; canvas.height = 256;
   const g2d = canvas.getContext("2d");
   const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(2.4, 2.0, 2.0),
-    new THREE.MeshLambertMaterial({ map: tex })
+    new THREE.MeshStandardMaterial({ map: tex, roughness: .72, metalness: .02 })
   );
   mesh.position.set(x, 1.0, z);
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.35, 28),
+    new THREE.MeshBasicMaterial({ color: reward.color, transparent: true, opacity: .2, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  glow.rotation.x = -Math.PI / 2; glow.position.y = -1.0;
+  mesh.add(glow);
   scene.add(mesh);
-  const crate = { mesh, tex, g2d, count, reward, pulse: 0 };
+  const crate = { mesh, tex, g2d, count, reward, pulse: 0, phase: Math.random() * Math.PI * 2, glow };
   drawCrateFace(g2d, crate);
   tex.needsUpdate = true;
   return crate;
 }
 
 /* ================= 通用资源 ================= */
-const bulletGeo = new THREE.BoxGeometry(0.24, 0.24, 0.9);
-const bulletMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+const bulletGeo = new THREE.CapsuleGeometry(0.10, 0.36, 2, 5);
+bulletGeo.rotateX(Math.PI / 2);
+const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfff2a8, toneMapped: false });
 
 /* 弹道轨迹:锥形渐隐拖尾(顶点色从亮黄渐变到黑,配合加法混合实现发光淡出) */
 const TRAIL_LEN = 3.2;
@@ -380,14 +582,15 @@ trailGeo.translate(0, 0, TRAIL_LEN / 2 + 0.35);   // 整体挪到弹体尾部
 }
 const trailMat = new THREE.MeshBasicMaterial({
   vertexColors: true, transparent: true, depthWrite: false,
-  blending: THREE.AdditiveBlending,
+  blending: THREE.AdditiveBlending, toneMapped: false,
 });
 
 /* 连射弹道残影 + 枪口火光(机枪扫射效果):共享几何/材质,靠缩放渐隐,限量防卡顿 */
 const segGeo = new THREE.BoxGeometry(1, 1, 1);
-const segMat = new THREE.MeshBasicMaterial({ color: 0xffa54f, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
-const flashMat = new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending });
-const TRAIL_FX_CAP = 500;
+const segMat = new THREE.MeshBasicMaterial({ color: 0xffbe55, transparent: true, opacity: 0.62, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+const flashGeo = new THREE.IcosahedronGeometry(1, 0);
+const flashMat = new THREE.MeshBasicMaterial({ color: 0xffe783, transparent: true, opacity: 0.92, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+const TRAIL_FX_CAP = mobileDevice ? 280 : 500;
 function addTrailSeg(x0, z0, x1, z1) {
   if (trailFx.length >= TRAIL_FX_CAP) return;
   const dx = x1 - x0, dz = z1 - z0;
@@ -400,20 +603,33 @@ function addTrailSeg(x0, z0, x1, z1) {
 }
 function addMuzzleFlash(x, z) {
   if (trailFx.length >= TRAIL_FX_CAP) return;
-  const m = new THREE.Mesh(segGeo, flashMat);
+  const m = new THREE.Mesh(flashGeo, flashMat);
   m.position.set(x, 1.0, z);
   m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
   scene.add(m);
   trailFx.push({ mesh: m, life: 5, maxLife: 5, w: 0.6, flash: true });
 }
-const particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+const particleGeo = new THREE.TetrahedronGeometry(0.19, 0);
 const pMatCache = {};
-function pMat(color) { return pMatCache[color] || (pMatCache[color] = new THREE.MeshBasicMaterial({ color })); }
+function pMat(color) { return pMatCache[color] || (pMatCache[color] = new THREE.MeshBasicMaterial({ color, toneMapped: false })); }
+const ringGeo = new THREE.RingGeometry(.34, .48, 24);
+let impactFx = [];
+function addImpactRing(x, y, z, color, size = 1.2) {
+  if (impactFx.length > (mobileDevice ? 18 : 30)) return;
+  const material = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: .72, side: THREE.DoubleSide, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false
+  });
+  const mesh = new THREE.Mesh(ringGeo, material);
+  mesh.position.set(x, y, z); mesh.rotation.x = -Math.PI / 2; mesh.scale.setScalar(.2);
+  scene.add(mesh);
+  impactFx.push({ mesh, material, life: 22, maxLife: 22, size });
+}
 
 /* 护盾 */
 const shieldMesh = new THREE.Mesh(
   new THREE.SphereGeometry(2.4, 20, 14),
-  new THREE.MeshBasicMaterial({ color: 0x4dd0e1, transparent: true, opacity: 0.22, depthWrite: false })
+  new THREE.MeshBasicMaterial({ color: 0x66e7ff, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
 );
 shieldMesh.visible = false;
 scene.add(shieldMesh);
@@ -423,7 +639,7 @@ let running = false;
 let frame = 0, score = 0, kills = 0, distance = 0, worldSpeed = 0.25;
 
 const player = {
-  x: 0, tx: null,
+  x: 0, tx: null, vx: 0, lastX: 0,
   soldiers: [],          // THREE.Group[]
   fireRate: 22, fireCd: 0, damage: 1,
   shield: 0, spreadT: 0, slowT: 0, hurtT: 0,
@@ -439,7 +655,15 @@ let gates = [], spawnGateCd = 500;          // 选择门
 let walls = [], spawnWallCd = 320;          // 阻碍墙壁
 let combo = 0, comboTimer = 0, critT = 0;   // 连杀 / 暴击模式
 let shake = 0;                              // 摄像机震动强度
+let cameraFollowX = 0, screenFlashT = 0;
+const screenFlashEl = document.getElementById("screenFlash");
+const speedFxEl = document.getElementById("speedFx");
 function addShake(a) { shake = Math.min(shake + a, 0.45); }
+function flashScreen(color = "#ffffff", strength = .35) {
+  screenFlashT = Math.max(screenFlashT, strength * 12);
+  screenFlashEl.style.background = color;
+  screenFlashEl.style.opacity = String(Math.min(.42, screenFlashT / 12));
+}
 
 /* ================= 输入 ================= */
 const keys = {};
@@ -482,15 +706,17 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function addParticles(x, y, z, color, n = 10, spd = 0.22) {
-  for (let i = 0; i < n; i++) {
+  const cap = mobileDevice ? 220 : 340;
+  for (let i = 0; i < n && particles.length < cap; i++) {
     const m = new THREE.Mesh(particleGeo, pMat(color));
     m.position.set(x, y, z);
-    m.scale.setScalar(rand(0.7, 1.6));
+    m.scale.setScalar(rand(0.75, 1.75));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
     particles.push({
       mesh: m,
       vx: rand(-spd, spd), vy: rand(0.05, spd * 1.6), vz: rand(-spd, spd),
-      life: rand(20, 40),
+      rx: rand(-.18, .18), ry: rand(-.18, .18), rz: rand(-.18, .18),
+      life: rand(22, 42),
     });
     scene.add(m);
   }
@@ -498,17 +724,18 @@ function addParticles(x, y, z, color, n = 10, spd = 0.22) {
 
 function makeTextSprite(text, color, size = 4.6) {
   const c = document.createElement("canvas");
-  c.width = 256; c.height = 80;
+  c.width = 512; c.height = 128;
   const g = c.getContext("2d");
-  g.font = "bold 44px Microsoft YaHei";
+  g.font = "900 66px Microsoft YaHei";
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.strokeStyle = "#000"; g.lineWidth = 8;
-  g.strokeText(text, 128, 40);
+  g.strokeStyle = "rgba(12,27,46,.9)"; g.lineWidth = 13;
+  g.strokeText(text, 256, 64);
   g.fillStyle = color;
-  g.fillText(text, 128, 40);
+  g.fillText(text, 256, 64);
   const tex = new THREE.CanvasTexture(c);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sprite.scale.set(size, size * 0.315, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, toneMapped: false }));
+  sprite.scale.set(size, size * 0.25, 1);
   return sprite;
 }
 
@@ -516,24 +743,32 @@ function addFloatText(x, y, z, text, color, size = 4.6) {
   const sprite = makeTextSprite(text, color, size);
   sprite.position.set(x, y, z);
   scene.add(sprite);
-  floatTexts.push({ sprite, life: 60 });
+  const baseScale = sprite.scale.clone();
+  sprite.scale.multiplyScalar(.12);
+  floatTexts.push({ sprite, life: 60, maxLife: 60, baseScale });
 }
 
 /* ================= 小队管理 ================= */
 function squadPositions() {
   const n = player.soldiers.length;
-  const row1 = Math.min(n, 6), row2 = n - row1;
   const pos = [];
-  for (let i = 0; i < row1; i++) pos.push({ x: player.x - (row1 - 1) * 0.65 + i * 1.3, z: PLAYER_Z });
-  for (let i = 0; i < row2; i++) pos.push({ x: player.x - (row2 - 1) * 0.65 + i * 1.3, z: PLAYER_Z + 1.6 });
+  let remaining = n, row = 0;
+  while (remaining > 0) {
+    const count = Math.min(remaining, 4);
+    for (let i = 0; i < count; i++) {
+      pos.push({ x: player.x - (count - 1) * .58 + i * 1.16, z: PLAYER_Z + row * 1.35 });
+    }
+    remaining -= count; row++;
+  }
   return pos;
 }
-function squadHalfWidth() { return (Math.min(player.soldiers.length, 6) - 1) * 0.65; }
+function squadHalfWidth() { return (Math.min(player.soldiers.length, 4) - 1) * 0.58; }
 
 function setSquadSize(n) {
   n = clamp(n, 0, 12);
   while (player.soldiers.length < n) {
     const s = makeSoldier(0x1e88e5);
+    s.scale.setScalar(1.12);
     scene.add(s);
     player.soldiers.push(s);
   }
@@ -599,10 +834,10 @@ function spawnEnemyGroup() {
       mesh = makeSoldier(0x607d8b);
       const plate = new THREE.Mesh(
         new THREE.BoxGeometry(0.95, 1.25, 0.12),
-        new THREE.MeshLambertMaterial({ color: 0xb0bec5 })
+        new THREE.MeshStandardMaterial({ color: 0xb9d2dc, metalness: .45, roughness: .35, flatShading: true })
       );
       plate.position.set(0, 0.78, -0.62);
-      mesh.add(plate);
+      mesh.userData.rig.add(plate);
       hp = 6 + Math.floor(difficulty * 3);
       speed = rand(0.07, 0.10);
       radius = 0.85; sc = 30;
@@ -640,7 +875,10 @@ function shatterEnemy(e) {
     m.position.set(ep.x + rand(-0.4, 0.4), rand(0.2, 1.6) * hMul, ep.z + rand(-0.3, 0.3));
     m.scale.setScalar(rand(0.8, 2.6));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
-    particles.push({ mesh: m, vx: rand(-0.3, 0.3), vy: rand(0.1, 0.38), vz: rand(-0.25, 0.25), life: rand(25, 50) });
+    particles.push({
+      mesh: m, vx: rand(-0.3, 0.3), vy: rand(0.1, 0.38), vz: rand(-0.25, 0.25),
+      rx: rand(-.2,.2), ry: rand(-.2,.2), rz: rand(-.2,.2), life: rand(25, 50)
+    });
     scene.add(m);
   }
 }
@@ -652,6 +890,7 @@ function killEnemy(e) {
   score += e.score;
   const ep = e.mesh.position;
   shatterEnemy(e);
+  addImpactRing(ep.x, .08, ep.z, e.type === "shield" ? 0x8dd8ed : 0xff765f, e.type === "heavy" ? 2.6 : 1.5);
   addFloatText(ep.x, 2.2, ep.z, "+" + e.score, "#ffd54f");
   addShake(e.type === "heavy" ? 0.16 : 0.07);
   combo++;
@@ -682,17 +921,31 @@ function spawnGatePair() {
   const gw = ROAD_HALF - 0.4;
   const mats = [];
   function door(x, colorHex, text, cssColor) {
-    const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({
+      color: colorHex, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false
+    });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(gw, 3.4), mat);
     m.position.set(x, 1.7, 0);
     group.add(m);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: colorHex }));
-    frame.position.set(x, 3.5, 0);
-    group.add(frame);
+    const floorMat = mat.clone(); floorMat.opacity = .11;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(gw, 7.5), floorMat);
+    floor.rotation.x = -Math.PI / 2; floor.position.set(x, .035, 1.2); group.add(floor);
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: colorHex, emissive: colorHex, emissiveIntensity: .58, metalness: .08, roughness: .32
+    });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(gw + .28, .22, .28), frameMat);
+    top.position.set(x, 3.5, 0); group.add(top);
+    for (const side of [-1, 1]) {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(.2, 3.55, .28), frameMat);
+      pillar.position.set(x + side * gw / 2, 1.76, 0); group.add(pillar);
+      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(.23, 0), new THREE.MeshBasicMaterial({ color: colorHex, toneMapped: false }));
+      orb.position.set(x + side * gw / 2, 3.54, 0); group.add(orb);
+    }
     const sp = makeTextSprite(text, cssColor, 5.5);
     sp.position.set(x, 2.2, 0.15);
     group.add(sp);
-    mats.push(mat);
+    mats.push(mat, floorMat);
   }
   /* 随机抽两个不同效果(可能全增益、全减益或混合,需要抉择) */
   const i = Math.floor(Math.random() * GATE_EFFECTS.length);
@@ -703,7 +956,7 @@ function spawnGatePair() {
   door( ROAD_HALF / 2, right.color, right.text, right.css);
   group.position.z = SPAWN_Z;
   scene.add(group);
-  gates.push({ group, mats, used: false, left, right });
+  gates.push({ group, mats, used: false, left, right, phase: Math.random() * Math.PI * 2 });
 }
 function disposeGate(g) {
   scene.remove(g.group);
@@ -731,10 +984,12 @@ function makeWallTexture() {
     g.moveTo(x, 0); g.lineTo(x + 16, 0); g.lineTo(x + 4, 24); g.lineTo(x - 12, 24);
     g.closePath(); g.fill();
   }
-  return new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 const wallGeo = new THREE.BoxGeometry(1, 2.2, 0.7);
-const wallMat = new THREE.MeshLambertMaterial({ map: makeWallTexture() });
+const wallMat = new THREE.MeshStandardMaterial({ map: makeWallTexture(), roughness: .86, metalness: .02 });
 function spawnWall() {
   const halfW = rand(2.0, 3.6);                                    // 挡住 1/4 ~ 1/2 路宽
   const m = new THREE.Mesh(wallGeo, wallMat);
@@ -749,6 +1004,8 @@ function applyReward(crate) {
   const { x, z } = { x: crate.mesh.position.x, z: crate.mesh.position.z };
   const r = crate.reward;
   addParticles(x, 1.2, z, r.color, 24, 0.3);
+  addImpactRing(x, .08, z, r.color, 2.2);
+  flashScreen(r.color, .28);
   addFloatText(x, 3, z, r.label, r.color);
   switch (r.type) {
     case "soldier":  setSquadSize(player.soldiers.length + 1); break;
@@ -760,6 +1017,7 @@ function applyReward(crate) {
     case "coin":     score += 150; break;
     case "bomb": {
       addParticles(x, 1.5, z, "#ff9800", 40, 0.5);
+      addImpactRing(x, .1, z, 0xff9800, 5.5);
       addShake(0.4);
       for (const e of enemies) {
         e.dead = true;
@@ -780,10 +1038,12 @@ function update() {
   distance += worldSpeed;
   worldSpeed = 0.25 + distance / 9000;
   groundTex.offset.y += worldSpeed / 30;
+  speedFxEl.style.opacity = critT > 0 ? ".16" : combo >= 5 ? ".09" : "0";
 
   /* 树木循环 */
   for (const tr of trees) {
     tr.position.z += worldSpeed;
+    tr.rotation.z = Math.sin(t * .8 + tr.userData.phase) * .012;
     if (tr.position.z > 14) {
       tr.position.z = -125;
       const side = Math.random() < 0.5 ? -1 : 1;
@@ -792,18 +1052,20 @@ function update() {
   }
 
   /* 玩家移动 */
+  const prevX = player.x;
   if (keys["arrowleft"]  || keys["a"]) player.x -= 0.22;
   if (keys["arrowright"] || keys["d"]) player.x += 0.22;
   if (player.tx != null) player.x += (player.tx - player.x) * 0.2;
   const margin = squadHalfWidth() + 0.7;
   player.x = clamp(player.x, -ROAD_HALF + margin, ROAD_HALF - margin);
+  player.vx += ((player.x - prevX) - player.vx) * .28;
 
   /* 小队位置与动画 */
   const pos = squadPositions();
   player.soldiers.forEach((s, i) => {
     s.position.x += (pos[i].x - s.position.x) * 0.35;
-    s.position.z = pos[i].z;
-    animateWalk(s, t);
+    s.position.z += (pos[i].z - s.position.z) * .28;
+    animateWalk(s, t, 10.5, .58, clamp(player.vx * 4, -.9, .9));
   });
   if (player.hurtT > 0) {
     player.hurtT--;
@@ -827,7 +1089,8 @@ function update() {
   player.fireCd--;
   if (player.fireCd <= 0 && player.soldiers.length > 0) {
     player.fireCd = player.fireRate;
-    for (const p of pos) {
+    pos.forEach((p, i) => {
+      player.soldiers[i].userData.recoil = 1;
       addMuzzleFlash(p.x + 0.1, p.z - 1.15);            // 枪口火光
       const dirs = player.spreadT > 0 ? [-0.12, 0, 0.12] : [0];
       for (const vx of dirs) {
@@ -838,7 +1101,7 @@ function update() {
         scene.add(m);
         bullets.push({ mesh: m, vx, dmg: player.damage, px: m.position.x, pz: m.position.z });
       }
-    }
+    });
   }
 
   /* 子弹 */
@@ -886,9 +1149,14 @@ function update() {
       eff.apply();
       addFloatText(player.x, 4.2, -4, eff.text + "!", eff.css, 5.5);
       addParticles(player.x, 1.5, PLAYER_Z, eff.css, 20, 0.3);
+      addImpactRing(player.x, .08, PLAYER_Z, eff.color, 3.8);
+      flashScreen(eff.css, eff.good ? .24 : .38);
       if (!eff.good) addShake(0.18);                 // 踩坑反馈
     }
-    if (g.used) g.mats.forEach(m => m.opacity = Math.max(0, m.opacity - 0.03));
+    g.mats.forEach((m, i) => {
+      if (g.used) m.opacity = Math.max(0, m.opacity - 0.03);
+      else m.opacity = (i % 2 === 0 ? .24 : .09) + Math.sin(t * 5 + g.phase + i) * .045;
+    });
   }
   gates = gates.filter(g => {
     if (g.group.position.z > 12) { disposeGate(g); return false; }
@@ -903,12 +1171,17 @@ function update() {
   for (const e of enemies) {
     e.mesh.position.z += (e.speed * slowMul + worldSpeed * 0.5);
     e.mesh.position.x += Math.sin(t * 3 + e.mesh.userData.phase) * 0.015;
-    animateWalk(e.mesh, t, 8);
+    animateWalk(e.mesh, t, 8, e.type === "heavy" ? .38 : .52);
   }
   /* 道具箱随卷轴前进 */
   for (const c of crates) {
     c.mesh.position.z += worldSpeed;
-    if (c.pulse > 0) { c.pulse--; const s = 1 + c.pulse * 0.02; c.mesh.scale.set(s, s, s); }
+    c.mesh.position.y = 1 + Math.sin(t * 2.7 + c.phase) * .12;
+    c.mesh.rotation.y += .012;
+    if (c.pulse > 0) c.pulse--;
+    const s = 1 + c.pulse * .018 + Math.sin(t * 4 + c.phase) * .012;
+    c.mesh.scale.setScalar(s);
+    c.glow.material.opacity = .15 + Math.sin(t * 4 + c.phase) * .06;
   }
 
   /* 子弹命中 */
@@ -951,11 +1224,13 @@ function update() {
         const crit = critT > 0 && Math.random() < 0.35;
         if (crit) dmg *= 2;
         e.hp -= dmg;
+        e.mesh.userData.hit = 1;
         drawHpLabel(e);                                                   // 实时刷新头顶血量
         const ty = e.type === "heavy" ? 4.4 : 3.0;
         if (crit) addFloatText(ep.x, ty, ep.z, "暴击 -" + dmg, "#ffb300", 3.6);
         else      addFloatText(ep.x, ty, ep.z, "-" + dmg, "#ff7043", 2.6);
-        addParticles(bp.x, 1.1, bp.z, crit ? "#ffb300" : "#ff5252", crit ? 6 : 3, 0.15);
+        addParticles(bp.x, 1.1, bp.z, crit ? "#ffcf45" : "#ff685c", crit ? 8 : 4, 0.17);
+        if (crit) addImpactRing(bp.x, 1.05, bp.z, 0xffc83d, 1.15);
         addShake(0.02);                                                   // 命中微震
         if (e.hp <= 0) killEnemy(e);
         break;
@@ -965,7 +1240,7 @@ function update() {
   bullets = bullets.filter(b => { if (b.dead) { scene.remove(b.mesh); return false; } return true; });
   crates = crates.filter(c => {
     if (c.collected || c.mesh.position.z > 12) {
-      scene.remove(c.mesh); c.tex.dispose(); c.mesh.material.dispose();
+      scene.remove(c.mesh); c.tex.dispose(); c.mesh.material.dispose(); c.glow.geometry.dispose(); c.glow.material.dispose();
       return false;
     }
     return true;
@@ -984,11 +1259,15 @@ function update() {
         if (player.shield > 0) {
           player.shield = Math.max(0, player.shield - e.contactDmg);
           addShake(0.12);
+          addImpactRing(player.x, .08, PLAYER_Z, 0x66e7ff, 3.2);
+          flashScreen("#66e7ff", .22);
           addFloatText(player.x, 3.2, PLAYER_Z - 1, "护盾抵挡!", "#4dd0e1");
         } else {
           setSquadSize(player.soldiers.length - e.contactDmg);
           player.hurtT = 18;
           addShake(0.3);                                                  // 受击强震
+          addImpactRing(player.x, .08, PLAYER_Z, 0xff5c64, 3.5);
+          flashScreen("#ff4050", .42);
           addFloatText(player.x, 3.2, PLAYER_Z - 1, "-" + e.contactDmg + " 兵!", "#ff5252");
         }
         break;
@@ -1018,6 +1297,8 @@ function update() {
         player.soldiers = survivors;
         player.hurtT = 18;
         addShake(0.3);
+        addImpactRing(wx, .08, PLAYER_Z, 0xff5c64, 4.2);
+        flashScreen("#ff4050", .42);
         addFloatText(wx, 3.6, PLAYER_Z - 1, "撞墙 -" + lost + " 兵!", "#ff5252");
       }
     }
@@ -1038,19 +1319,42 @@ function update() {
   }
   trailFx = trailFx.filter(s => { if (s.life <= 0) { scene.remove(s.mesh); return false; } return true; });
 
+  /* 冲击波 */
+  for (const fx of impactFx) {
+    fx.life--;
+    const k = Math.max(fx.life / fx.maxLife, 0);
+    const progress = 1 - k;
+    fx.mesh.scale.setScalar(.2 + progress * fx.size);
+    fx.mesh.material.opacity = k * .72;
+    fx.mesh.position.y += .004;
+  }
+  impactFx = impactFx.filter(fx => {
+    if (fx.life <= 0) { scene.remove(fx.mesh); fx.material.dispose(); return false; }
+    return true;
+  });
+
   /* 粒子 */
   for (const p of particles) {
     p.mesh.position.x += p.vx;
     p.mesh.position.y += p.vy;
     p.mesh.position.z += p.vz;
+    p.mesh.rotation.x += p.rx || 0;
+    p.mesh.rotation.y += p.ry || 0;
+    p.mesh.rotation.z += p.rz || 0;
+    p.mesh.scale.multiplyScalar(.972);
     p.vy -= 0.012;
+    p.vx *= .99; p.vz *= .99;
     p.life--;
   }
   particles = particles.filter(p => { if (p.life <= 0) { scene.remove(p.mesh); return false; } return true; });
 
   /* 浮动文字 */
   for (const ft of floatTexts) {
-    ft.sprite.position.y += 0.05;
+    const age = ft.maxLife - ft.life;
+    const q = Math.min(age / 8, 1);
+    const pop = q < 1 ? 1 + 2.70158 * Math.pow(q - 1, 3) + 1.70158 * Math.pow(q - 1, 2) : 1;
+    ft.sprite.scale.set(ft.baseScale.x * pop, ft.baseScale.y * pop, 1);
+    ft.sprite.position.y += age < 10 ? .075 : .045;
     ft.life--;
     ft.sprite.material.opacity = clamp(ft.life / 30, 0, 1);
   }
@@ -1066,11 +1370,16 @@ function update() {
   /* 摄像机震动(位置抖动后自然衰减,基础视角保持固定) */
   shake *= 0.82;
   if (shake < 0.002) shake = 0;
+  cameraFollowX += (player.x * .11 - cameraFollowX) * .06;
   camera.position.set(
-    (Math.random() - 0.5) * 2 * shake,
-    cameraBase.y + (Math.random() - 0.5) * 2 * shake,
+    cameraFollowX + (Math.random() - 0.5) * 2 * shake,
+    cameraBase.y + Math.sin(t * 3.5) * .025 + (Math.random() - 0.5) * 2 * shake,
     cameraBase.z
   );
+  camera.lookAt(cameraFollowX * .55, .35, cameraBase.lookZ);
+
+  if (screenFlashT > 0) screenFlashT--;
+  screenFlashEl.style.opacity = String(Math.min(.42, screenFlashT / 12));
 
   score += worldSpeed * 0.15;
   if (frame % 6 === 0) updateHUD();
@@ -1082,11 +1391,21 @@ const hKills = document.getElementById("hKills");
 const hArmy  = document.getElementById("hArmy");
 const hDist  = document.getElementById("hDist");
 const buffsEl = document.getElementById("buffs");
+function setHudText(el, text, pulse = false) {
+  if (el.textContent === text) return;
+  el.textContent = text;
+  if (pulse) {
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+    setTimeout(() => el.classList.remove("pop"), 260);
+  }
+}
 function updateHUD() {
-  hScore.textContent = "得分 " + Math.floor(score);
-  hKills.textContent = "击杀 " + kills;
-  hArmy.textContent  = "士兵 ×" + player.soldiers.length;
-  hDist.textContent  = Math.floor(distance) + " m";
+  setHudText(hScore, "★ " + Math.floor(score));
+  setHudText(hKills, "击杀 " + kills, true);
+  setHudText(hArmy, "小队 ×" + player.soldiers.length, true);
+  setHudText(hDist, Math.floor(distance) + " m");
   let b = "";
   if (combo >= 2)         b += `<span style="color:#ff5722">连杀 ×${combo}</span>`;
   if (critT > 0)          b += `<span style="color:#ffb300">暴击模式 ${Math.ceil(critT / 60)}s</span>`;
@@ -1129,8 +1448,10 @@ window.addEventListener("appinstalled", () => {
 
 function clearWorld() {
   for (const a of [bullets, particles, trailFx]) a.forEach(o => scene.remove(o.mesh));
+  impactFx.forEach(fx => { scene.remove(fx.mesh); fx.material.dispose(); });
+  impactFx = [];
   enemies.forEach(removeEnemy);
-  crates.forEach(c => { scene.remove(c.mesh); c.tex.dispose(); c.mesh.material.dispose(); });
+  crates.forEach(c => { scene.remove(c.mesh); c.tex.dispose(); c.mesh.material.dispose(); c.glow.geometry.dispose(); c.glow.material.dispose(); });
   gates.forEach(disposeGate);
   gates = [];
   walls.forEach(w => scene.remove(w.mesh));   // 几何/材质共享,无需 dispose
@@ -1145,14 +1466,17 @@ function startGame() {
   camera.position.set(0, cameraBase.y, cameraBase.z);   // 复位摄像机(待机演示会移动它)
   camera.lookAt(0, 0, cameraBase.lookZ);
   setSquadSize(0);
-  player.x = 0; player.tx = null;
+  player.x = 0; player.tx = null; player.vx = 0; player.lastX = 0;
   player.fireRate = 22; player.fireCd = 0; player.damage = 1;
   player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0;
   setSquadSize(1);
   frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
   combo = 0; comboTimer = 0; critT = 0; shake = 0;
+  cameraFollowX = 0; screenFlashT = 0;
+  screenFlashEl.style.opacity = "0"; speedFxEl.style.opacity = "0";
   spawnEnemyCd = 60; spawnCrateCd = 130; spawnGateCd = 450; spawnWallCd = 320;
   overlay.classList.add("hidden");
+  overlay.classList.remove("game-over");
   hud.classList.remove("hidden");
   updateHUD();
   running = true;
@@ -1166,6 +1490,7 @@ function startGame() {
 
 function endGame() {
   running = false;
+  speedFxEl.style.opacity = "0";
   activePointerId = null;
   player.tx = null;
   resultText.innerHTML =
@@ -1173,6 +1498,7 @@ function endGame() {
     "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
     "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>";
   startBtn.textContent = "再来一局";
+  overlay.classList.add("game-over");
   overlay.classList.remove("hidden");
 }
 startBtn.addEventListener("click", startGame);
@@ -1200,6 +1526,10 @@ function loop(now = performance.now()) {
     camera.position.z = cameraBase.z;
     camera.lookAt(0, 0, cameraBase.lookZ);
     groundTex.offset.y += elapsed * 0.12;
+    if (demoSoldier.parent) {
+      animateWalk(demoSoldier, t, 4.5, .34, Math.sin(t * .7) * .18);
+      demoSoldier.rotation.y = Math.sin(t * .45) * .16;
+    }
   }
   renderer.render(scene, camera);
 }
