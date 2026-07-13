@@ -1,4 +1,4 @@
-const CACHE_NAME = "soldier-rush-v4";
+const CACHE_NAME = "soldier-rush-v5";
 const APP_FILES = ["./", "./index.html", "./game.js", "./three.min.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", event => {

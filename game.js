@@ -4,10 +4,11 @@
 const ROAD_HALF = 8;          // 道路半宽
 const SPAWN_Z = -100;         // 敌人生成位置
 const PLAYER_Z = 0;
-const MAX_SQUAD = 15;
-const MAX_TIER = 5;
+const MAX_SQUAD = 1;
+const MAX_TIER = 6;
 const MERGE_POWER = 3.4;
 const SAVE_KEY = "soldierRush.save.v1";
+const HERO_XP_TO_NEXT = [0, 70, 105, 145, 190, 240, 0];
 const TIER_SKILLS = {
   2: { name: "twinShot", label: "双重射击" },
   3: { name: "pierce", label: "穿透弹" },
@@ -430,7 +431,7 @@ function tintSoldier(soldier, hex) {
 
 /* ================= 道具箱 ================= */
 const REWARDS = [
-  { type: "weapon",   label: "武器兵", color: "#8bc34a", weight: 28 },
+  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 28, xp: 48 },
   { type: "firerate", label: "射速+",  color: "#4fc3f7", weight: 14 },
   { type: "damage",   label: "火力+",  color: "#ff8a65", weight: 14 },
   { type: "spread",   label: "散弹",   color: "#ba68c8", weight: 12 },
@@ -439,31 +440,12 @@ const REWARDS = [
   { type: "slow",     label: "减缓",   color: "#fff176", weight: 8  },
   { type: "coin",     label: "金币",   color: "#ffd54f", weight: 12 },
 ];
-function pickRecruitWeapon() {
-  const unlocked = saveData.unlockedWeapons.filter(id => WEAPON_DEFS[id]);
-  if (!unlocked.length) return "rifle";
-  const pairCandidates = unlocked.filter(id => {
-    const counts = new Map();
-    player.soldiers.filter(u => u.weaponId === id && u.tier < MAX_TIER).forEach(u => counts.set(u.tier, (counts.get(u.tier) || 0) + 1));
-    return [...counts.values()].some(n => n % 3 === 2);
-  });
-  if (pairCandidates.length && Math.random() < .62) return pairCandidates[Math.floor(Math.random() * pairCandidates.length)];
-  if (Math.random() < .72) {
-    return unlocked.slice().sort((a, b) =>
-      player.soldiers.filter(u => u.weaponId === a).length - player.soldiers.filter(u => u.weaponId === b).length
-    )[0];
-  }
-  return unlocked[Math.floor(Math.random() * unlocked.length)];
-}
 function pickReward() {
   const total = REWARDS.reduce((s, r) => s + r.weight, 0);
   let n = Math.random() * total;
   let reward = REWARDS[0];
   for (const r of REWARDS) { n -= r.weight; if (n <= 0) { reward = r; break; } }
-  if (reward.type !== "weapon") return { ...reward };
-  const weaponId = pickRecruitWeapon();
-  const def = WEAPON_DEFS[weaponId];
-  return { ...reward, weaponId, label: def.label + "兵", color: def.css, colorHex: def.color };
+  return { ...reward };
 }
 
 function drawCrateFace(g, crate) {
@@ -629,6 +611,7 @@ const player = {
   soldiers: [],          // {id, mesh, weaponId, tier, armor, maxArmor, fireCd}
   damageBonus: 0, fireRateMul: 1,
   shield: 0, spreadT: 0, slowT: 0, hurtT: 0,
+  xp: 0, level: 1,
 };
 let nextUnitId = 1;
 let nextEnemyId = 1;
@@ -646,6 +629,7 @@ let shake = 0;                              // 摄像机震动强度
 let cameraFollowX = 0, screenFlashT = 0;
 let boss = null, bossCount = 0, nextBossDistance = 500, bossWarning = false;
 let bossHazards = [];
+let bossProjectiles = [];
 const screenFlashEl = document.getElementById("screenFlash");
 const speedFxEl = document.getElementById("speedFx");
 function addShake(a) { shake = Math.min(shake + a, 0.45); }
@@ -752,21 +736,11 @@ function addFloatText(x, y, z, text, color, size = 4.6) {
   floatTexts.push({ sprite, life: 60, maxLife: 60, baseScale });
 }
 
-/* ================= 小队管理 ================= */
+/* ================= 单人进化 ================= */
 function squadPositions() {
-  const n = player.soldiers.length;
-  const pos = [];
-  let remaining = n, row = 0;
-  while (remaining > 0) {
-    const count = Math.min(remaining, 4);
-    for (let i = 0; i < count; i++) {
-      pos.push({ x: player.x - (count - 1) * .58 + i * 1.16, z: PLAYER_Z + row * 1.35 });
-    }
-    remaining -= count; row++;
-  }
-  return pos;
+  return player.soldiers.length ? [{ x: player.x, z: PLAYER_Z }] : [];
 }
-function squadHalfWidth() { return (Math.min(player.soldiers.length, 4) - 1) * 0.58; }
+function squadHalfWidth() { return 0; }
 
 function disposeSoldierMesh(mesh) {
   const materials = new Set(), geometries = new Set();
@@ -786,11 +760,8 @@ function unitPower(unit) {
   const shots = weapon.type === "shotgun" ? 5 : 1;
   return ((weapon.damage + player.damageBonus) * shots * 60 / (weapon.fireRate * player.fireRateMul)) * Math.pow(MERGE_POWER, unit.tier - 1);
 }
-function totalPower() { return player.soldiers.reduce((sum, unit) => sum + unitPower(unit), 0); }
-
-function canMergeWith(weaponId, tier = 1) {
-  return tier < MAX_TIER && player.soldiers.filter(u => u.weaponId === weaponId && u.tier === tier).length >= 2;
-}
+function heroUnit() { return player.soldiers[0] || null; }
+function totalPower() { const hero = heroUnit(); return hero ? unitPower(hero) : 0; }
 
 function createPlayerUnit(weaponId = "rifle", tier = 1, x = player.x, z = PLAYER_Z) {
   const def = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
@@ -808,54 +779,41 @@ function removePlayerUnit(unit) {
   disposeSoldierMesh(unit.mesh);
 }
 
-function addSoldierUnit(weaponId = "rifle", tier = 1, options = {}) {
-  if (!WEAPON_DEFS[weaponId]) weaponId = "rifle";
-  if (player.soldiers.length >= MAX_SQUAD && !canMergeWith(weaponId, tier)) {
-    score += 100;
-    if (!options.quiet) addFloatText(player.x, 3.5, PLAYER_Z - 1, "编队已满 +100", "#ffd54f", 4.2);
-    return false;
-  }
-  const unit = createPlayerUnit(weaponId, tier, options.x, options.z);
-  player.soldiers.push(unit);
-  if (!options.skipMerge) mergeSoldiers();
+function createHero() {
+  const unit = createPlayerUnit(WEAPON_ORDER[player.level - 1], player.level);
+  player.soldiers = [unit];
+  return unit;
+}
+
+function evolveHero() {
+  const previous = heroUnit();
+  if (!previous || player.level >= MAX_TIER) return false;
+  const position = previous.mesh.position.clone();
+  removePlayerUnit(previous);
+  player.level++;
+  const hero = createPlayerUnit(WEAPON_ORDER[player.level - 1], player.level, position.x, position.z);
+  hero.mesh.userData.mergeT = 1;
+  player.soldiers = [hero];
+  const def = WEAPON_DEFS[hero.weaponId];
+  addParticles(position.x, 1.5, position.z, def.css, mobileDevice ? 34 : 58, .42);
+  addImpactRing(position.x, .08, position.z, def.color, 5 + player.level);
+  addFloatText(position.x, 4.4, position.z, `${def.label} 进化!`, def.css, 6.2);
+  addShake(.35); flashScreen(def.css, .42);
   return true;
 }
 
-function mergeSoldiers() {
-  let merged = true;
-  while (merged) {
-    merged = false;
-    for (const weaponId of WEAPON_ORDER) {
-      for (let tier = 1; tier < MAX_TIER; tier++) {
-        const same = player.soldiers.filter(u => u.weaponId === weaponId && u.tier === tier);
-        if (same.length < 3) continue;
-        const chosen = same.slice(0, 3);
-        const x = chosen.reduce((s, u) => s + u.mesh.position.x, 0) / 3;
-        const z = chosen.reduce((s, u) => s + u.mesh.position.z, 0) / 3;
-        const ids = new Set(chosen.map(u => u.id));
-        player.soldiers = player.soldiers.filter(u => !ids.has(u.id));
-        chosen.forEach(removePlayerUnit);
-        const upgraded = createPlayerUnit(weaponId, tier + 1, x, z);
-        upgraded.mesh.userData.mergeT = 1;
-        player.soldiers.push(upgraded);
-        const def = WEAPON_DEFS[weaponId];
-        addImpactRing(x, .08, z, def.color, 3 + tier * .5);
-        addParticles(x, 1.2, z, def.css, 20 + tier * 4, .3);
-        const nextTier = tier + 1;
-        const skill = TIER_SKILLS[nextTier];
-        addFloatText(x, 3.7, z, `${def.label} T${nextTier}!`, def.css, 5.2);
-        if (skill) addFloatText(x, 4.45, z, skill.label, "#fff4aa", 5.2);
-        flashScreen(def.css, .22);
-        merged = true;
-        break;
-      }
-      if (merged) break;
-    }
+function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
+  if (player.level >= MAX_TIER) {
+    player.damageBonus += Math.max(1, Math.ceil(amount / 50));
+    addFloatText(x, 3.8, z, `火力 +${Math.max(1, Math.ceil(amount / 50))}`, "#ffcf66", 4.5);
+    return;
   }
-}
-
-function recruitSoldiers(count, weaponId = null) {
-  for (let i = 0; i < count; i++) addSoldierUnit(weaponId || pickRecruitWeapon());
+  player.xp += amount;
+  addFloatText(x, 3.5, z, `经验 +${amount}`, "#b8f58b", 4.3);
+  while (player.level < MAX_TIER && player.xp >= HERO_XP_TO_NEXT[player.level]) {
+    player.xp -= HERO_XP_TO_NEXT[player.level];
+    evolveHero();
+  }
 }
 
 function damageUnit(unit, amount = 1) {
@@ -868,17 +826,6 @@ function damageUnit(unit, amount = 1) {
   return true;
 }
 
-function setSquadSize(n) {
-  n = clamp(n, 0, MAX_SQUAD);
-  while (player.soldiers.length < n) {
-    if (!addSoldierUnit(pickRecruitWeapon(), 1, { silent: true })) break;
-  }
-  while (player.soldiers.length > n) {
-    const unit = player.soldiers.slice().sort((a, b) => a.tier - b.tier || a.armor - b.armor)[0];
-    player.soldiers = player.soldiers.filter(u => u.id !== unit.id);
-    removePlayerUnit(unit);
-  }
-}
 
 /* ================= 生成敌人 / 道具 ================= */
 /* 敌人头顶血条与生命数字 */
@@ -1013,14 +960,14 @@ const GATE_EFFECTS = [
     apply() { player.damageBonus += 3; } },
   { text: "射速 +20%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
     apply() { player.fireRateMul = Math.max(.45, player.fireRateMul * .8); } },
-  { text: "+2 兵",     color: 0x8bc34a, css: "#aed581", good: true,
-    apply() { recruitSoldiers(2); } },
+  { text: "经验 +55",  color: 0x8bc34a, css: "#aed581", good: true,
+    apply() { grantHeroXp(55); } },
   { text: "攻击 -3",   color: 0xb71c1c, css: "#ef5350", good: false,
     apply() { player.damageBonus = Math.max(0, player.damageBonus - 3); } },
   { text: "射速 -20%", color: 0x5d4037, css: "#bcaaa4", good: false,
     apply() { player.fireRateMul = Math.min(1.8, player.fireRateMul * 1.25); } },
-  { text: "-2 兵",     color: 0x7b1fa2, css: "#ce93d8", good: false,
-    apply() { setSquadSize(player.soldiers.length - 2); player.hurtT = 18; } },
+  { text: "护甲 -2",   color: 0x7b1fa2, css: "#ce93d8", good: false,
+    apply() { const hero = heroUnit(); if (hero) damageUnit(hero, 2); player.hurtT = 18; } },
 ];
 function spawnGatePair() {
   const group = new THREE.Group();
@@ -1114,7 +1061,7 @@ function applyReward(crate) {
   flashScreen(r.color, .28);
   addFloatText(x, 3, z, r.label, r.color);
   switch (r.type) {
-    case "weapon":   addSoldierUnit(r.weaponId); break;
+    case "xp":       grantHeroXp(r.xp || 45, x, z); break;
     case "firerate": player.fireRateMul = Math.max(.45, player.fireRateMul * .88); break;
     case "damage":   player.damageBonus += 1; break;
     case "spread":   player.spreadT = 600; break;                        // 10 秒散弹
@@ -1225,6 +1172,8 @@ function beginBossBattle() {
   clearHazardsForBoss();
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
+  bossProjectiles.forEach(disposeBossProjectile);
+  bossProjectiles = [];
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
   const maxHp = Math.round(420 * Math.pow(1.7, bossNumber - 1));
@@ -1277,15 +1226,17 @@ function defeatBoss() {
   scene.remove(defeated.mesh); disposeSoldierMesh(defeated.mesh);
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
+  bossProjectiles.forEach(disposeBossProjectile);
+  bossProjectiles = [];
   boss = null; bossCount++; nextBossDistance += 500; bossWarning = false;
   bossBarEl.classList.add("hidden");
   if (unlock) {
     const def = WEAPON_DEFS[unlock];
-    addSoldierUnit(unlock, 1, { silent: true });
-    addFloatText(player.x, 5.2, PLAYER_Z - 5, `解锁 ${def.label}!`, def.css, 6.2);
+    grantHeroXp(110, player.x, PLAYER_Z - 5);
+    addFloatText(player.x, 5.2, PLAYER_Z - 5, `${def.label} 能量核心!`, def.css, 6.2);
     flashScreen(def.css, .4);
   } else {
-    recruitSoldiers(2);
+    grantHeroXp(80, player.x, PLAYER_Z - 5);
     addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破!", "#ffe27a", 6.2);
   }
   addImpactRing(0, .08, -22, defeated.def.accent, 8);
@@ -1305,6 +1256,29 @@ function disposeBossHazard(h) {
     if (o.geometry) o.geometry.dispose();
   });
   h.materials.forEach(m => m.dispose());
+}
+
+function disposeBossProjectile(projectile) {
+  scene.remove(projectile.mesh);
+  projectile.mesh.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+  });
+}
+
+function launchBossProjectile(kind, x, z) {
+  if (!boss) return;
+  const color = kind === "lane" ? 0xff4560 : 0xffad4f;
+  const mesh = new THREE.Group();
+  const coreMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  const shellMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, toneMapped: false });
+  const body = new THREE.Mesh(kind === "lane" ? new THREE.BoxGeometry(.42, .42, 2.2) : new THREE.SphereGeometry(.38, 12, 9), coreMat);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(kind === "lane" ? .42 : .65, 10, 7), shellMat);
+  mesh.add(body, glow);
+  mesh.position.copy(boss.mesh.position).add(new THREE.Vector3(0, 2.15, -1.2));
+  mesh.lookAt(x, .2, z);
+  scene.add(mesh);
+  bossProjectiles.push({ kind, x, z, mesh, coreMat, shellMat, life: kind === "lane" ? 74 : 62, maxLife: kind === "lane" ? 74 : 62 });
 }
 
 function bossHazardMaterial(color, opacity) {
@@ -1358,10 +1332,15 @@ function launchBossAttack() {
   addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, 16, .28);
   if (boss.attackIndex % 2 === 0) {
     const lane = clamp(Math.round(player.x / 4) * 4, -4, 4);
+    launchBossProjectile("lane", lane, -12);
     createBossHazard("lane", lane, -12);
     addFloatText(lane, 3.3, -10, "危险车道!", "#ff6673", 4.2);
   } else {
-    for (let i = 0; i < 3; i++) createBossHazard("missile", clamp(player.x + rand(-3.2, 3.2), -6.5, 6.5), rand(-1.5, 3.5));
+    for (let i = 0; i < 3; i++) {
+      const targetX = clamp(player.x + rand(-3.2, 3.2), -6.5, 6.5), targetZ = rand(-1.5, 3.5);
+      launchBossProjectile("missile", targetX, targetZ);
+      createBossHazard("missile", targetX, targetZ);
+    }
     addFloatText(player.x, 3.3, -6, "导弹来袭!", "#ffad61", 4.2);
   }
   boss.attackIndex++;
@@ -1370,13 +1349,15 @@ function launchBossAttack() {
 
 function resolveBossHazard(h) {
   let hits = 0;
-  for (const unit of player.soldiers.slice()) {
+  const unit = heroUnit();
+  if (unit) {
     const p = unit.mesh.position;
     const inside = h.kind === "lane" ? Math.abs(p.x - h.x) < 1.6 : ((p.x - h.x) ** 2 + (p.z - h.z) ** 2 < h.radius ** 2);
-    if (!inside) continue;
-    hits++;
-    damageUnit(unit, 1 + Math.floor((boss?.number || 1) / 3));
-    addParticles(p.x, 1.1, p.z, h.kind === "lane" ? "#ff5b68" : "#ff9a5b", 12, .3);
+    if (inside) {
+      hits++;
+      damageUnit(unit, 1 + Math.floor((boss?.number || 1) / 3));
+      addParticles(p.x, 1.1, p.z, h.kind === "lane" ? "#ff5b68" : "#ff9a5b", 18, .36);
+    }
   }
   if (hits) { player.hurtT = 18; addShake(.34); flashScreen("#ff4f58", .36); }
   addImpactRing(h.x, .08, h.z, h.kind === "lane" ? 0xff4c5d : 0xff914d, h.kind === "lane" ? 4 : 2.5);
@@ -1424,6 +1405,22 @@ function updateBoss(t) {
   bossHazards = bossHazards.filter(h => {
     if (h.timer <= 0) { disposeBossHazard(h); return false; }
     return true;
+  });
+
+  for (const projectile of bossProjectiles) {
+    const progress = 1 - projectile.life / projectile.maxLife;
+    projectile.mesh.position.lerp(new THREE.Vector3(projectile.x, .28, projectile.z), .13 + progress * .06);
+    projectile.mesh.rotateZ(.2);
+    projectile.shellMat.opacity = .48 + Math.sin(t * 18) * .24;
+    projectile.mesh.scale.setScalar(1 + progress * .8);
+    projectile.life -= timeMul;
+  }
+  bossProjectiles = bossProjectiles.filter(projectile => {
+    if (projectile.life > 0) return true;
+    addParticles(projectile.x, .9, projectile.z, projectile.kind === "lane" ? "#ff586c" : "#ffb05c", mobileDevice ? 18 : 30, .38);
+    addImpactRing(projectile.x, .1, projectile.z, projectile.kind === "lane" ? 0xff4560 : 0xffad4f, projectile.kind === "lane" ? 3.8 : 2.7);
+    disposeBossProjectile(projectile);
+    return false;
   });
 }
 
@@ -1665,8 +1662,8 @@ function update() {
     return true;
   });
 
-  /* 敌人碰撞小队 */
-  const collisionUnits = player.soldiers.slice();
+  /* 敌人碰撞主角 */
+  const collisionUnits = player.soldiers.slice(0, 1);
   for (const e of enemies) {
     if (e.dead) continue;
     const ep = e.mesh.position;
@@ -1690,7 +1687,7 @@ function update() {
           addShake(0.3);                                                  // 受击强震
           addImpactRing(player.x, .08, PLAYER_Z, 0xff5c64, 3.5);
           flashScreen("#ff4050", .42);
-          addFloatText(player.x, 3.2, PLAYER_Z - 1, lost ? "士兵阵亡!" : "护甲 -" + e.contactDmg, "#ff5252");
+        addFloatText(player.x, 3.2, PLAYER_Z - 1, lost ? "主角倒下!" : "护甲 -" + e.contactDmg, "#ff5252");
         }
         break;
       }
@@ -1707,7 +1704,7 @@ function update() {
       w.hit = true;
       const wx = w.mesh.position.x;
       let lost = 0, hitCount = 0;
-      for (const unit of player.soldiers.slice()) {
+      for (const unit of player.soldiers.slice(0, 1)) {
         const s = unit.mesh;
         if (Math.abs(s.position.x - wx) < w.halfW + 0.25) {
           addParticles(s.position.x, 1.2, s.position.z, "#90caf9", 10, 0.28);
@@ -1720,7 +1717,7 @@ function update() {
         addShake(0.3);
         addImpactRing(wx, .08, PLAYER_Z, 0xff5c64, 4.2);
         flashScreen("#ff4050", .42);
-        addFloatText(wx, 3.6, PLAYER_Z - 1, lost ? "撞墙 -" + lost + "兵" : "护甲受损", "#ff5252");
+        addFloatText(wx, 3.6, PLAYER_Z - 1, lost ? "撞墙重创!" : "护甲受损", "#ff5252");
       }
     }
   }
@@ -1832,22 +1829,15 @@ function setHudText(el, text, pulse = false) {
   }
 }
 function updateHUD() {
+  const hero = heroUnit();
+  const weapon = hero ? WEAPON_DEFS[hero.weaponId] : WEAPON_DEFS.rifle;
+  const nextXp = HERO_XP_TO_NEXT[player.level] || 0;
   setHudText(hScore, "★ " + Math.floor(score));
   setHudText(hDist, Math.floor(distance) + " m");
-  setHudText(hArmy, "小队 ×" + player.soldiers.length, true);
+  setHudText(hArmy, `等级 ${player.level}/${MAX_TIER} · ${nextXp ? player.xp + "/" + nextXp + " XP" : "满级"}`, true);
   setHudText(hPower, "战力 " + Math.round(totalPower()), true);
-  let b = "";
-  for (const weaponId of WEAPON_ORDER) {
-    const units = player.soldiers.filter(u => u.weaponId === weaponId);
-    if (!units.length) continue;
-    const tiers = [];
-    for (let tier = MAX_TIER; tier >= 1; tier--) {
-      const count = units.filter(u => u.tier === tier).length;
-      if (count) tiers.push(`T${tier}×${count}`);
-    }
-    const def = WEAPON_DEFS[weaponId];
-    b += `<span style="color:${def.css}">${def.label} ${tiers.join(" ")}</span>`;
-  }
+  let b = `<span style="color:${weapon.css}">${weapon.label} · 进化阶段 ${player.level}</span>`;
+  if (hero) b += `<span style="color:#b8f58b">护甲 ${Math.max(0, hero.armor)}/${hero.maxArmor}</span>`;
   if (combo >= 2)         b += `<span style="color:#ff5722">连杀 ×${combo}</span>`;
   if (critT > 0)          b += `<span style="color:#ffb300">暴击模式 ${Math.ceil(critT / 60)}s</span>`;
   if (player.shield > 0)  b += `<span style="color:#4dd0e1">🛡 护盾 ×${player.shield}</span>`;
@@ -1859,25 +1849,19 @@ function updateHUD() {
 }
 
 function renderStatsPanel() {
+  const hero = heroUnit();
+  const weapon = hero ? WEAPON_DEFS[hero.weaponId] : WEAPON_DEFS.rifle;
+  const nextXp = HERO_XP_TO_NEXT[player.level] || 0;
   const rows = [];
   rows.push(["总战力", Math.round(totalPower())]);
   rows.push(["击杀 / 距离", `${kills} / ${Math.floor(distance)}m`]);
-  rows.push(["全队攻击加成", `+${player.damageBonus}`]);
-  rows.push(["全队射速", `${Math.round(100 / player.fireRateMul)}%`]);
+  rows.push(["主角等级", `${player.level} / ${MAX_TIER}`]);
+  rows.push(["当前武器", weapon.label]);
+  rows.push(["经验", nextXp ? `${player.xp} / ${nextXp}` : "满级"]);
+  rows.push(["攻击加成", `+${player.damageBonus}`]);
+  rows.push(["射速", `${Math.round(100 / player.fireRateMul)}%`]);
   rows.push(["护盾", player.shield]);
-  rows.push(["编队护甲", `${player.soldiers.reduce((s,u)=>s+Math.max(0,u.armor),0)} / ${player.soldiers.reduce((s,u)=>s+u.maxArmor,0)}`]);
-  for (const weaponId of WEAPON_ORDER) {
-    const def = WEAPON_DEFS[weaponId];
-    const units = player.soldiers.filter(u => u.weaponId === weaponId);
-    const unlocked = saveData.unlockedWeapons.includes(weaponId);
-    if (!unlocked && !units.length) continue;
-    const tiers = [];
-    for (let tier = MAX_TIER; tier >= 1; tier--) {
-      const count = units.filter(u => u.tier === tier).length;
-      if (count) tiers.push(`T${tier}×${count}`);
-    }
-    rows.push([def.label, units.length ? tiers.join(" · ") : "已解锁"]);
-  }
+  rows.push(["主角护甲", hero ? `${Math.max(0, hero.armor)} / ${hero.maxArmor}` : "0 / 0"]);
   if (player.spreadT > 0) rows.push(["散弹增益", `${Math.ceil(player.spreadT / 60)}秒`]);
   if (player.slowT > 0) rows.push(["时间减缓", `${Math.ceil(player.slowT / 60)}秒`]);
   if (critT > 0) rows.push(["暴击模式", `${Math.ceil(critT / 60)}秒`]);
@@ -1943,6 +1927,8 @@ function clearWorld() {
   if (boss) { scene.remove(boss.mesh); disposeSoldierMesh(boss.mesh); boss = null; }
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
+  bossProjectiles.forEach(disposeBossProjectile);
+  bossProjectiles = [];
   bossBarEl.classList.add("hidden");
   floatTexts.forEach(ft => { scene.remove(ft.sprite); ft.sprite.material.map.dispose(); ft.sprite.material.dispose(); });
   bullets = []; enemies = []; crates = []; particles = []; floatTexts = []; trailFx = [];
@@ -1953,12 +1939,14 @@ function startGame() {
   clearWorld();
   camera.position.set(0, cameraBase.y, cameraBase.z);   // 复位摄像机(待机演示会移动它)
   camera.lookAt(0, 0, cameraBase.lookZ);
-  setSquadSize(0);
+  player.soldiers.forEach(removePlayerUnit);
+  player.soldiers = [];
   nextUnitId = 1; nextEnemyId = 1;
   player.x = 0; player.tx = null; player.vx = 0; player.lastX = 0;
   player.damageBonus = 0; player.fireRateMul = 1;
   player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0;
-  addSoldierUnit("rifle", 1, { silent: true });
+  player.xp = 0; player.level = 1;
+  createHero();
   frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
   combo = 0; comboTimer = 0; critT = 0; shake = 0;
   bossCount = 0; nextBossDistance = 500; bossWarning = false;
