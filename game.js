@@ -8,6 +8,12 @@ const MAX_SQUAD = 15;
 const MAX_TIER = 5;
 const MERGE_POWER = 3.4;
 const SAVE_KEY = "soldierRush.save.v1";
+const TIER_SKILLS = {
+  2: { name: "twinShot", label: "双重射击" },
+  3: { name: "pierce", label: "穿透弹" },
+  4: { name: "novaVolley", label: "新星齐射" },
+  5: { name: "starburst", label: "星爆弹幕" },
+};
 
 const WEAPON_DEFS = {
   rifle:   { label: "步枪",   color: 0x5aa9ff, css: "#74b9ff", damage: 2,  fireRate: 24, speed: 1.28, type: "bullet",  unlockBoss: 0 },
@@ -257,6 +263,8 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   const trouserMat = mat(0x26394b);
   const gunMat = mat(0x28323d, .42, .38);
   const accentMat = mat(weapon.color, .12, .42);
+  const glowMat = new THREE.MeshBasicMaterial({ color: weapon.color, toneMapped: false });
+  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x172033), .62).getHex(), .08, .5);
 
   const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = .018; shadow.scale.y = .62;
@@ -270,35 +278,58 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legL);
   part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legR);
 
-  part(soldierGeo.torso, uniformMat, 0, .98, 0, 1.04, 1, .82);
+  part(soldierGeo.torso, uniformMat, 0, .98, 0, 1.12, 1.04, .86);
   part(soldierGeo.cube, darkMat, 0, 1.04, -.30, .54, .46, .12); // 胸甲
   if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, .75, -.02, .72, .13, .48); // 腰带
 
-  const head = part(soldierGeo.head, skinMat, 0, 1.55, -.01, 1, 1.03, .95);
-  part(soldierGeo.helmet, darkMat, 0, 1.68, .015, 1.06, .58, 1.06);
+  const head = part(soldierGeo.head, skinMat, 0, 1.58, -.03, 1.16, 1.22, 1.04);
+  part(soldierGeo.helmet, hairMat, 0, 1.78, .03, 1.22, .56, 1.14);
+  part(new THREE.ConeGeometry(.22, .52, 5), hairMat, -.22, 1.91, .02, 1, 1, 1.1).rotation.z = -.42;
+  part(new THREE.ConeGeometry(.18, .42, 5), hairMat,  .22, 1.88, .02, 1, 1, 1.1).rotation.z = .36;
+  part(soldierGeo.cube, accentMat, 0, 1.72, -.31, .72, .075, .07);
   if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, 1.61, -.27, .67, .08, .5); // 帽檐
   let face = null;
-  if (!lowPowerDevice) {
-    const eyeWhite = mat(0xfffbf1, 0, .35), pupilMat = mat(0x183047, 0, .3);
-    const eyeGeo = new THREE.SphereGeometry(.072, 7, 5), pupilGeo = new THREE.SphereGeometry(.036, 6, 4);
+  if (!lowPowerDevice || tier >= 2) {
+    const eyeWhite = mat(0xfffbf1, 0, .35), pupilMat = glowMat;
+    const eyeGeo = new THREE.SphereGeometry(.085, 8, 6), pupilGeo = new THREE.SphereGeometry(.048, 7, 5);
     for (const side of [-1, 1]) {
-      part(eyeGeo, eyeWhite, side * .095, 1.58, -.245, 1, 1.08, .55);
-      part(pupilGeo, pupilMat, side * .095, 1.58, -.286, 1, 1, .45);
+      part(eyeGeo, eyeWhite, side * .12, 1.61, -.29, 1, 1.18, .5);
+      part(pupilGeo, pupilMat, side * .12, 1.61, -.336, 1, 1.12, .4);
     }
-    face = part(soldierGeo.cube, gunMat, 0, 1.43, -.265, .16, .035, .025);
+    face = part(soldierGeo.cube, hairMat, 0, 1.44, -.3, .19, .028, .025);
   }
 
   if (tier >= 2) {
-    part(soldierGeo.cube, accentMat, -.42, 1.24, -.02, .24, .16, .38);
-    part(soldierGeo.cube, accentMat,  .42, 1.24, -.02, .24, .16, .38);
+    part(new THREE.IcosahedronGeometry(.23, 0), accentMat, -.48, 1.28, -.02, 1, 1, 1);
+    part(new THREE.IcosahedronGeometry(.23, 0), accentMat,  .48, 1.28, -.02, 1, 1, 1);
+    part(soldierGeo.cube, glowMat, 0, 1.14, -.39, .13, .13, .04);
   }
-  if (tier >= 3) part(soldierGeo.cube, accentMat, 0, 1.82, .02, .13, .28, .16);
+  if (tier >= 3) {
+    part(new THREE.ConeGeometry(.12, .55, 5), accentMat, 0, 2.11, .02, 1, 1, 1);
+    part(soldierGeo.cube, darkMat, 0, 1.05, .29, .7, .78, .12);
+    for (const side of [-1, 1]) part(new THREE.ConeGeometry(.13, .65, 5), glowMat, side * .44, 1.02, .28, 1, 1, 1).rotation.z = side * .7;
+  }
   if (tier >= 4) {
     const aura = new THREE.Mesh(new THREE.RingGeometry(.58, .72, 24), new THREE.MeshBasicMaterial({
       color: weapon.color, transparent: true, opacity: .28, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     }));
     aura.rotation.x = -Math.PI / 2; aura.position.y = .035; g.add(aura); g.userData.aura = aura;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(.38, .035, 6, 20), glowMat);
+    halo.position.set(0, 2.12, .02); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
+    for (const side of [-1, 1]) {
+      const wing = part(soldierGeo.cube, accentMat, side * .76, 1.22, .2, .18, .56, .08);
+      wing.rotation.z = side * .48;
+    }
+  }
+  if (tier >= 5) {
+    part(new THREE.CylinderGeometry(.32, .47, .18, 6), glowMat, 0, 2.08, .01, 1, 1, 1);
+    for (const side of [-1, 1]) {
+      const crown = part(new THREE.ConeGeometry(.11, .42, 5), glowMat, side * .19, 2.3, -.02, 1, 1, 1);
+      crown.rotation.z = side * .22;
+    }
+    const cape = part(soldierGeo.cube, accentMat, 0, 1.0, .42, .72, .95, .06);
+    cape.rotation.x = -.15;
   }
 
   const armL = new THREE.Group(), armR = new THREE.Group();
@@ -374,6 +405,10 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   if (ud.aura) {
     ud.aura.rotation.z += .025;
     ud.aura.material.opacity = .2 + Math.sin(t * 5 + ud.phase) * .08;
+  }
+  if (ud.halo) {
+    ud.halo.rotation.z += .045;
+    ud.halo.position.y = 2.12 + Math.sin(t * 4 + ud.phase) * .055;
   }
   if (ud.mergeT > 0) {
     ud.mergeT = Math.max(0, ud.mergeT - .035);
@@ -806,7 +841,10 @@ function mergeSoldiers() {
         const def = WEAPON_DEFS[weaponId];
         addImpactRing(x, .08, z, def.color, 3 + tier * .5);
         addParticles(x, 1.2, z, def.css, 20 + tier * 4, .3);
-        addFloatText(x, 3.4, z, `${def.label} T${tier + 1}!`, def.css, 4.8);
+        const nextTier = tier + 1;
+        const skill = TIER_SKILLS[nextTier];
+        addFloatText(x, 3.7, z, `${def.label} T${nextTier}!`, def.css, 5.2);
+        if (skill) addFloatText(x, 4.45, z, skill.label, "#fff4aa", 5.2);
         flashScreen(def.css, .22);
         merged = true;
         break;
@@ -1106,11 +1144,18 @@ function fireUnitWeapon(unit, p) {
   let dirs = [0];
   if (def.type === "shotgun") dirs = [-.2, -.1, 0, .1, .2];
   else if (def.type === "smg") dirs = [rand(-.035, .035)];
+  if (unit.tier === 2) dirs = dirs.flatMap(vx => [vx - .07, vx + .07]);
+  if (unit.tier === 4) dirs = dirs.flatMap(vx => [vx - .16, vx, vx + .16]);
+  if (unit.tier >= 5) dirs = dirs.flatMap(vx => [vx - .22, vx - .11, vx, vx + .11, vx + .22]);
   if (player.spreadT > 0 && def.type !== "shotgun") dirs = [-.12, 0, .12];
   else if (player.spreadT > 0) dirs = [-.28, -.2, -.1, 0, .1, .2, .28];
 
   unit.fireCd = Math.max(4, def.fireRate * player.fireRateMul);
   unit.mesh.userData.recoil = 1;
+  if (unit.tier >= 4) {
+    addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.7 : 1.15);
+    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 9 : 5, .16);
+  }
   addMuzzleFlash(p.x + .1, p.z - 1.15);
   for (const vx of dirs) {
     const mesh = new THREE.Mesh(bulletGeo, bulletMaterial(unit.weaponId));
@@ -1124,7 +1169,8 @@ function fireUnitWeapon(unit, p) {
     bullets.push({
       mesh, weaponId: unit.weaponId, type: def.type, vx, dmg: damage,
       px: mesh.position.x, pz: mesh.position.z, speed: def.speed,
-      pierce: def.pierce || 1, radius: def.radius || 0, hitIds: new Set(),
+      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 2 + unit.tier : 1),
+      radius: def.radius || (unit.tier >= 5 ? 1.35 : 0), starburst: unit.tier >= 5, hitIds: new Set(),
     });
   }
 }
@@ -1177,7 +1223,7 @@ function makeBossModel(def, bossNumber) {
 
 function beginBossBattle() {
   clearHazardsForBoss();
-  bossHazards.forEach(h => { scene.remove(h.mesh); h.material.dispose(); h.mesh.geometry.dispose(); });
+  bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
@@ -1229,7 +1275,7 @@ function defeatBoss() {
   persistSave();
   shatterBoss(defeated);
   scene.remove(defeated.mesh); disposeSoldierMesh(defeated.mesh);
-  bossHazards.forEach(h => { scene.remove(h.mesh); h.material.dispose(); h.mesh.geometry.dispose(); });
+  bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
   boss = null; bossCount++; nextBossDistance += 500; bossWarning = false;
   bossBarEl.classList.add("hidden");
@@ -1253,19 +1299,63 @@ function shatterBoss(target) {
   addParticles(p.x, 2.0, p.z, "#ffdf8a", mobileDevice ? 35 : 55, .5);
 }
 
-function createBossHazard(kind, x, z = -9) {
-  const material = new THREE.MeshBasicMaterial({
-    color: kind === "lane" ? 0xff3f4f : 0xff8a43, transparent: true, opacity: .26,
-    side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+function disposeBossHazard(h) {
+  scene.remove(h.mesh);
+  h.mesh.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
   });
-  const geometry = kind === "lane" ? new THREE.PlaneGeometry(3.2, 36) : new THREE.CircleGeometry(1.55, 28);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, .045, z); scene.add(mesh);
-  bossHazards.push({ kind, x, z, mesh, material, timer: kind === "lane" ? 74 : 62, maxTimer: kind === "lane" ? 74 : 62, radius: 1.55 });
+  h.materials.forEach(m => m.dispose());
+}
+
+function bossHazardMaterial(color, opacity) {
+  return new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
+    blending: THREE.AdditiveBlending, toneMapped: false
+  });
+}
+
+function createBossHazard(kind, x, z = -9) {
+  const mesh = new THREE.Group();
+  const materials = [];
+  const addGroundMarker = (geometry, color, opacity, y = 0) => {
+    const material = bossHazardMaterial(color, opacity);
+    const marker = new THREE.Mesh(geometry, material);
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.y = y;
+    marker.renderOrder = 3;
+    mesh.add(marker); materials.push(material);
+    return marker;
+  };
+
+  let core;
+  if (kind === "lane") {
+    core = addGroundMarker(new THREE.PlaneGeometry(3.25, 36), 0xff263d, .34);
+    addGroundMarker(new THREE.PlaneGeometry(.15, 35.4), 0xffe36a, .8, .012).position.x = -1.42;
+    addGroundMarker(new THREE.PlaneGeometry(.15, 35.4), 0xffe36a, .8, .012).position.x = 1.42;
+    for (const offset of [-.7, 0, .7]) {
+      const stripe = addGroundMarker(new THREE.PlaneGeometry(.22, 33), 0xff5c68, .48, .018);
+      stripe.position.x = offset;
+    }
+  } else {
+    core = addGroundMarker(new THREE.CircleGeometry(1.58, 36), 0xff5a2e, .46);
+    addGroundMarker(new THREE.RingGeometry(1.22, 1.52, 36), 0xffd95c, .92, .018);
+    const beaconMat = bossHazardMaterial(0xffd168, .92);
+    const beacon = new THREE.Mesh(new THREE.IcosahedronGeometry(.28, 1), beaconMat);
+    beacon.position.y = .38; beacon.renderOrder = 4;
+    mesh.add(beacon); materials.push(beaconMat);
+    mesh.userData.beacon = beacon;
+  }
+
+  mesh.position.set(x, .06, z);
+  scene.add(mesh);
+  bossHazards.push({ kind, x, z, mesh, core, materials, timer: kind === "lane" ? 74 : 62, maxTimer: kind === "lane" ? 74 : 62, radius: 1.55 });
 }
 
 function launchBossAttack() {
   if (!boss) return;
+  const core = boss.mesh.userData.bossCore;
+  if (core) core.scale.setScalar(2.4);
+  addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, 16, .28);
   if (boss.attackIndex % 2 === 0) {
     const lane = clamp(Math.round(player.x / 4) * 4, -4, 4);
     createBossHazard("lane", lane, -12);
@@ -1320,12 +1410,19 @@ function updateBoss(t) {
   for (const h of bossHazards) {
     h.timer -= timeMul;
     const k = h.timer / h.maxTimer;
-    h.material.opacity = .16 + Math.sin(h.timer * .55) * .11 + (1 - k) * .18;
-    h.mesh.scale.setScalar(1 + (1 - k) * .08);
+    const pulse = .72 + Math.sin(h.timer * .55) * .2 + (1 - k) * .28;
+    h.materials.forEach(m => m.opacity = Math.min(1, pulse));
+    h.core.material.opacity = Math.min(.78, .25 + (1 - k) * .58);
+    h.mesh.scale.setScalar(1 + (1 - k) * .12);
+    if (h.mesh.userData.beacon) {
+      const beacon = h.mesh.userData.beacon;
+      beacon.rotation.y += .16 * timeMul;
+      beacon.scale.setScalar(.7 + (1 - k) * .85 + Math.sin(h.timer * .45) * .16);
+    }
     if (h.timer <= 0 && !h.resolved) { h.resolved = true; resolveBossHazard(h); }
   }
   bossHazards = bossHazards.filter(h => {
-    if (h.timer <= 0) { scene.remove(h.mesh); h.material.dispose(); h.mesh.geometry.dispose(); return false; }
+    if (h.timer <= 0) { disposeBossHazard(h); return false; }
     return true;
   });
 }
@@ -1490,7 +1587,7 @@ function update() {
       const wp = w.mesh.position;
       if (Math.abs(bp.x - wp.x) < w.halfW && Math.abs(bp.z - wp.z) < 0.9) {
         b.dead = true;
-        if (b.type === "rocket") explodeProjectile(b, bp.x, wp.z);
+        if (b.type === "rocket" || b.starburst) explodeProjectile(b, bp.x, wp.z);
         else addParticles(bp.x, rand(0.6, 1.8), wp.z + 0.6, "#bdbdbd", 3, 0.12);
         break;
       }
@@ -1506,7 +1603,7 @@ function update() {
         c.pulse = 6;
         drawCrateFace(c.g2d, c); c.tex.needsUpdate = true;
         addParticles(bp.x, bp.y, cp.z + 1.1, "#ffd54f", 4, 0.15);
-        if (b.type === "rocket") explodeProjectile(b, cp.x, cp.z);
+        if (b.type === "rocket" || b.starburst) explodeProjectile(b, cp.x, cp.z);
         if (c.count <= 0) { applyReward(c); c.collected = true; }
         break;
       }
@@ -1516,7 +1613,7 @@ function update() {
     if (boss && !b.hitIds?.has("boss")) {
       const ep = boss.mesh.position;
       if (Math.abs(bp.x - ep.x) < 2.35 && Math.abs(bp.z - ep.z) < 2.5) {
-        if (b.type === "rocket") {
+        if (b.type === "rocket" || b.starburst) {
           b.dead = true;
           explodeProjectile(b, ep.x, ep.z);
         } else {
@@ -1534,7 +1631,7 @@ function update() {
       const ep = e.mesh.position;
       const r = e.radius;
       if (Math.abs(bp.x - ep.x) < r && Math.abs(bp.z - ep.z) < r + 0.3) {
-        if (b.type === "rocket") {
+        if (b.type === "rocket" || b.starburst) {
           b.dead = true;
           explodeProjectile(b, ep.x, ep.z);
           break;
@@ -1844,7 +1941,7 @@ function clearWorld() {
   walls.forEach(w => scene.remove(w.mesh));   // 几何/材质共享,无需 dispose
   walls = [];
   if (boss) { scene.remove(boss.mesh); disposeSoldierMesh(boss.mesh); boss = null; }
-  bossHazards.forEach(h => { scene.remove(h.mesh); h.material.dispose(); h.mesh.geometry.dispose(); });
+  bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
   bossBarEl.classList.add("hidden");
   floatTexts.forEach(ft => { scene.remove(ft.sprite); ft.sprite.material.map.dispose(); ft.sprite.material.dispose(); });
