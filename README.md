@@ -26,6 +26,7 @@ python -m http.server 8080 --bind 0.0.0.0
 把整个目录部署到任意支持 HTTPS 的静态网站服务即可，例如 GitHub Pages、Cloudflare Pages、Netlify 或自己的服务器。必须同时上传：
 
 - `index.html`
+- `game.js`
 - `three.min.js`
 - `manifest.webmanifest`
 - `service-worker.js`

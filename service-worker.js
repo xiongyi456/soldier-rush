@@ -1,5 +1,5 @@
-const CACHE_NAME = "soldier-rush-v2";
-const APP_FILES = ["./", "./index.html", "./three.min.js", "./manifest.webmanifest", "./icon.svg"];
+const CACHE_NAME = "soldier-rush-v3";
+const APP_FILES = ["./", "./index.html", "./game.js", "./three.min.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_FILES)));
