@@ -1,5 +1,7 @@
 "use strict";
 
+const BUILD_VERSION = "single-hero-8";
+
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
 const SPAWN_Z = -100;         // 敌人生成位置
@@ -763,6 +765,13 @@ function unitPower(unit) {
 function heroUnit() { return player.soldiers[0] || null; }
 function totalPower() { const hero = heroUnit(); return hero ? unitPower(hero) : 0; }
 
+function enforceSingleHero() {
+  if (player.soldiers.length <= 1) return;
+  const [hero, ...extras] = player.soldiers;
+  extras.forEach(removePlayerUnit);
+  player.soldiers = hero ? [hero] : [];
+}
+
 function createPlayerUnit(weaponId = "rifle", tier = 1, x = player.x, z = PLAYER_Z) {
   const def = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
   const color = new THREE.Color(0x2389df).lerp(new THREE.Color(def.color), .16 + tier * .08).getHex();
@@ -770,7 +779,7 @@ function createPlayerUnit(weaponId = "rifle", tier = 1, x = player.x, z = PLAYER
   mesh.scale.setScalar(1.08 + tier * .035);
   mesh.position.set(x, 0, z);
   scene.add(mesh);
-  const maxArmor = Math.pow(3, tier - 1);
+  const maxArmor = 24 + tier * 6;
   return { id: nextUnitId++, mesh, weaponId, tier, armor: maxArmor, maxArmor, fireCd: Math.random() * def.fireRate };
 }
 
@@ -1270,11 +1279,17 @@ function launchBossProjectile(kind, x, z) {
   if (!boss) return;
   const color = kind === "lane" ? 0xff4560 : 0xffad4f;
   const mesh = new THREE.Group();
-  const coreMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
-  const shellMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, toneMapped: false });
-  const body = new THREE.Mesh(kind === "lane" ? new THREE.BoxGeometry(.42, .42, 2.2) : new THREE.SphereGeometry(.38, 12, 9), coreMat);
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(kind === "lane" ? .42 : .65, 10, 7), shellMat);
+  const coreMat = new THREE.MeshBasicMaterial({ color, depthTest: false, toneMapped: false });
+  const shellMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: .82, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  const body = new THREE.Mesh(kind === "lane" ? new THREE.BoxGeometry(1.15, .42, 4.8) : new THREE.SphereGeometry(.72, 14, 10), coreMat);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(kind === "lane" ? .9 : 1.15, 12, 8), shellMat);
+  body.renderOrder = glow.renderOrder = 8;
   mesh.add(body, glow);
+  if (kind === "missile") {
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(.5, 2.4, 10), shellMat);
+    tail.rotation.x = Math.PI / 2; tail.position.z = 1.35; tail.renderOrder = 8;
+    mesh.add(tail);
+  }
   mesh.position.copy(boss.mesh.position).add(new THREE.Vector3(0, 2.15, -1.2));
   mesh.lookAt(x, .2, z);
   scene.add(mesh);
@@ -1330,6 +1345,8 @@ function launchBossAttack() {
   const core = boss.mesh.userData.bossCore;
   if (core) core.scale.setScalar(2.4);
   addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, 16, .28);
+  addShake(.18);
+  flashScreen(boss.attackIndex % 2 === 0 ? "#ff4560" : "#ffad4f", .18);
   if (boss.attackIndex % 2 === 0) {
     const lane = clamp(Math.round(player.x / 4) * 4, -4, 4);
     launchBossProjectile("lane", lane, -12);
@@ -1427,6 +1444,7 @@ function updateBoss(t) {
 /* ================= 更新 ================= */
 function update() {
   frame++;
+  enforceSingleHero();
   const t = frame / 60;
   if (boss) worldSpeed = .06;
   else {
@@ -1894,7 +1912,7 @@ function renderProgressText() {
 }
 renderProgressText();
 
-if (mobileDevice) controlText.textContent = "按住屏幕左右滑动来移动小队";
+if (mobileDevice) controlText.textContent = "按住屏幕左右滑动来移动主角";
 
 let installPrompt = null;
 window.addEventListener("beforeinstallprompt", e => {
@@ -2031,7 +2049,12 @@ demoSoldier.scale.set(2, 2, 2);
 scene.add(demoSoldier);
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js").catch(() => {}));
+  window.addEventListener("load", async () => {
+    try {
+      const registration = await navigator.serviceWorker.register(`service-worker.js?v=${BUILD_VERSION}`, { updateViaCache: "none" });
+      await registration.update();
+    } catch (_) {}
+  });
 }
 
 loop();
