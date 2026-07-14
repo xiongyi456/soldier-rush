@@ -1,22 +1,25 @@
-"use strict";
+// @ts-nocheck
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { AssetManager } from "./rendering/assetManager.ts";
+import { ObjectPool } from "./rendering/objectPool.ts";
+import { detectQuality } from "./systems/quality.ts";
+import { WeatherController } from "./systems/weather.ts";
+import { loadSaveV2, persistSaveV2, hydrateNativeSave } from "./systems/storage.ts";
+import { RANK_DEFS, MAX_RANK, COMMANDER_MERIT, rankName, rankXpToNext, weaponForRank, weaponStageForRank } from "./config/progression.ts";
+import { SKILL_DEFS, chooseSkillOptions, skillLevel } from "./config/skills.ts";
 
-const BUILD_VERSION = "single-hero-8";
+const BUILD_VERSION = "commander-road-2";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
 const SPAWN_Z = -100;         // 敌人生成位置
 const PLAYER_Z = 0;
 const MAX_SQUAD = 1;
-const MAX_TIER = 6;
+const MAX_TIER = MAX_RANK;
 const MERGE_POWER = 3.4;
-const SAVE_KEY = "soldierRush.save.v1";
-const HERO_XP_TO_NEXT = [0, 70, 105, 145, 190, 240, 0];
-const TIER_SKILLS = {
-  2: { name: "twinShot", label: "双重射击" },
-  3: { name: "pierce", label: "穿透弹" },
-  4: { name: "novaVolley", label: "新星齐射" },
-  5: { name: "starburst", label: "星爆弹幕" },
-};
 
 const WEAPON_DEFS = {
   rifle:   { label: "步枪",   color: 0x5aa9ff, css: "#74b9ff", damage: 2,  fireRate: 24, speed: 1.28, type: "bullet",  unlockBoss: 0 },
@@ -28,45 +31,28 @@ const WEAPON_DEFS = {
 };
 const WEAPON_ORDER = Object.keys(WEAPON_DEFS);
 const BOSS_DEFS = [
-  { name: "坦克指挥官", color: 0x496d42, accent: 0xffc44f, unlock: "smg" },
-  { name: "盾甲巨兵",   color: 0x526f87, accent: 0x8de8ff, unlock: "shotgun" },
-  { name: "狙击机甲",   color: 0x604f84, accent: 0xd8a5ff, unlock: "sniper" },
-  { name: "火箭巨兽",   color: 0x8b3e36, accent: 0xff9d5c, unlock: "rocket" },
-  { name: "能量守卫",   color: 0x256f78, accent: 0x72f5ff, unlock: "laser" },
+  { name: "坦克指挥官", color: 0x496d42, accent: 0xffc44f, unlock: "smg", theme: "tank" },
+  { name: "盾甲巨兵",   color: 0x526f87, accent: 0x8de8ff, unlock: "shotgun", theme: "shield" },
+  { name: "狙击机甲",   color: 0x604f84, accent: 0xd8a5ff, unlock: "sniper", theme: "sniper" },
+  { name: "火箭巨兽",   color: 0x8b3e36, accent: 0xff9d5c, unlock: "rocket", theme: "rocket" },
+  { name: "能量守卫",   color: 0x256f78, accent: 0x72f5ff, unlock: "laser", theme: "energy" },
 ];
 
-function defaultSave() {
-  return { version: 1, unlockedWeapons: ["rifle"], highestBoss: 0, bestScore: 0, bestDistance: 0 };
-}
-function loadSave() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return defaultSave();
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.unlockedWeapons)) return defaultSave();
-    const unlocked = WEAPON_ORDER.filter(id => parsed.unlockedWeapons.includes(id));
-    return {
-      version: 1,
-      unlockedWeapons: unlocked.includes("rifle") ? unlocked : ["rifle", ...unlocked],
-      highestBoss: Math.max(0, Number(parsed.highestBoss) || 0),
-      bestScore: Math.max(0, Number(parsed.bestScore) || 0),
-      bestDistance: Math.max(0, Number(parsed.bestDistance) || 0),
-    };
-  } catch (_) { return defaultSave(); }
-}
-let saveData = loadSave();
-function persistSave() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveData)); } catch (_) {}
-}
+let saveData = loadSaveV2();
+function persistSave() { persistSaveV2(saveData); }
 
 const mobileDevice = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const lowPowerDevice = mobileDevice && (!navigator.deviceMemory || navigator.deviceMemory <= 4);
+const quality = saveData.quality === "high" ? detectQuality(mobileDevice, false) : saveData.quality === "low" ? detectQuality(true, true) : detectQuality(mobileDevice, lowPowerDevice);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("cv"), antialias: !lowPowerDevice, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobileDevice ? (lowPowerDevice ? 1 : 1.35) : 2));
+renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.96;
+renderer.toneMappingExposure = 0.78;
+renderer.shadowMap.enabled = quality.dynamicShadows;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const assetManager = new AssetManager(renderer);
 
 function makeSkyTexture() {
   const c = document.createElement("canvas");
@@ -83,11 +69,18 @@ function makeSkyTexture() {
 }
 
 const scene = new THREE.Scene();
-scene.background = makeSkyTexture();
-scene.fog = new THREE.Fog(0xc9eaff, 58, 138);
+scene.background = new THREE.Color(0x718ca2);
+scene.fog = new THREE.Fog(0x91a8b5, 46, 116);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 300);
 const cameraBase = { y: 9.5, z: 11, lookZ: -20 };
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(quality.bloom ? Math.min(quality.pixelRatio, 1.25) : quality.pixelRatio);
+composer.addPass(new RenderPass(scene, camera));
+if (quality.bloom) {
+  const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), .42, .55, .82);
+  composer.addPass(bloom);
+}
 
 function updateCameraLayout() {
   const width = Math.max(1, window.innerWidth);
@@ -104,13 +97,57 @@ function updateCameraLayout() {
 }
 updateCameraLayout();
 
-scene.add(new THREE.HemisphereLight(0xf4fbff, 0x5b7651, 1.3));
-const sun = new THREE.DirectionalLight(0xfff0c7, 1.4);
+const hemiLight = new THREE.HemisphereLight(0xdceaff, 0x42513f, .82);
+scene.add(hemiLight);
+const sun = new THREE.DirectionalLight(0xffe4bf, .7);
 sun.position.set(15, 30, 10);
+sun.castShadow = quality.dynamicShadows;
 scene.add(sun);
-const skyFill = new THREE.DirectionalLight(0x78bfff, 0.55);
+const skyFill = new THREE.DirectionalLight(0x78bfff, .34);
 skyFill.position.set(-18, 12, -25);
 scene.add(skyFill);
+const heroRim = new THREE.PointLight(0x70cfff, 1.25, 26, 2);
+heroRim.position.set(-5, 8, 4);
+scene.add(heroRim);
+const weather = new WeatherController(scene, renderer, hemiLight, sun, skyFill);
+
+const rainPositions = new Float32Array(quality.rainCount * 2 * 3);
+for (let i = 0; i < quality.rainCount; i++) {
+  const x = randSeed(i * 3.1) * 24 - 12;
+  const y = 2 + randSeed(i * 7.3) * 15;
+  const z = -70 + randSeed(i * 11.7) * 82;
+  const p = i * 6;
+  rainPositions[p] = x; rainPositions[p + 1] = y; rainPositions[p + 2] = z;
+  rainPositions[p + 3] = x - .08; rainPositions[p + 4] = y - 1.15; rainPositions[p + 5] = z + .18;
+}
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute("position", new THREE.BufferAttribute(rainPositions, 3));
+const rainMat = new THREE.LineBasicMaterial({ color: 0xb9ddff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+const rainMesh = new THREE.LineSegments(rainGeo, rainMat);
+rainMesh.frustumCulled = false;
+scene.add(rainMesh);
+
+function updateRain(): void {
+  rainMat.opacity = weather.rainStrength * (quality.level === "low" ? .32 : .48);
+  rainMesh.visible = rainMat.opacity > .01;
+  if (!rainMesh.visible) return;
+  const positions = rainGeo.attributes.position.array;
+  for (let i = 0; i < quality.rainCount; i++) {
+    const p = i * 6;
+    positions[p + 1] -= .48;
+    positions[p + 4] -= .48;
+    positions[p + 2] += .07;
+    positions[p + 5] += .07;
+    if (positions[p + 1] < .1 || positions[p + 2] > 12) {
+      const x = player?.x ? player.x + rand(-12, 12) : rand(-12, 12);
+      const y = rand(9, 17);
+      const z = rand(-72, 8);
+      positions[p] = x; positions[p + 1] = y; positions[p + 2] = z;
+      positions[p + 3] = x - .08; positions[p + 4] = y - 1.15; positions[p + 5] = z + .18;
+    }
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
 
 function makeSunGlow() {
   const c = document.createElement("canvas"); c.width = c.height = 128;
@@ -121,7 +158,7 @@ function makeSunGlow() {
   grad.addColorStop(1, "rgba(255,210,110,0)");
   g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: .78, depthWrite: false, fog: false, toneMapped: false }));
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: .34, depthWrite: false, fog: false, toneMapped: false }));
   sp.position.set(-23, 24, -118); sp.scale.set(28, 28, 1);
   return sp;
 }
@@ -142,6 +179,7 @@ function randSeed(n) { return ((Math.sin(n * 91.37) + 1) * .5); }
 
 window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
   updateCameraLayout();
 });
 
@@ -150,9 +188,9 @@ function makeGroundTexture() {
   const c = document.createElement("canvas");
   c.width = 512; c.height = 512;
   const g = c.getContext("2d");
-  // 明亮低多边形草地
+  // 偏暗的卡通草地，给角色和技能留出亮度层级
   const grass = g.createLinearGradient(0, 0, 512, 0);
-  grass.addColorStop(0, "#72bd69"); grass.addColorStop(.5, "#86ce74"); grass.addColorStop(1, "#72bd69");
+  grass.addColorStop(0, "#3f7655"); grass.addColorStop(.5, "#568b61"); grass.addColorStop(1, "#3f7655");
   g.fillStyle = grass; g.fillRect(0, 0, 512, 512);
   for (let i = 0; i < 180; i++) {
     g.fillStyle = Math.random() < .5 ? "rgba(56,138,73,.17)" : "rgba(213,244,151,.16)";
@@ -162,7 +200,7 @@ function makeGroundTexture() {
   // 道路(中间 16/36 比例)
   const rl = 512 * (0.5 - ROAD_HALF / 36), rr = 512 * (0.5 + ROAD_HALF / 36);
   const road = g.createLinearGradient(rl, 0, rr, 0);
-  road.addColorStop(0, "#cdbd98"); road.addColorStop(.18, "#eadcba"); road.addColorStop(.5, "#f4e9cc"); road.addColorStop(.82, "#eadcba"); road.addColorStop(1, "#cdbd98");
+  road.addColorStop(0, "#827b70"); road.addColorStop(.18, "#a59c8c"); road.addColorStop(.5, "#bbb19e"); road.addColorStop(.82, "#a59c8c"); road.addColorStop(1, "#827b70");
   g.fillStyle = road; g.fillRect(rl, 0, rr - rl, 512);
   for (let i = 0; i < 90; i++) {
     g.fillStyle = Math.random() < .5 ? "rgba(166,139,96,.12)" : "rgba(255,255,255,.19)";
@@ -170,8 +208,8 @@ function makeGroundTexture() {
     g.fillRect(rl + Math.random() * (rr - rl), Math.random() * 512, s, s);
   }
   // 道路软边与路缘高光
-  g.fillStyle = "#477d52"; g.fillRect(rl - 8, 0, 8, 512); g.fillRect(rr, 0, 8, 512);
-  g.fillStyle = "#fff1b8"; g.fillRect(rl, 0, 5, 512); g.fillRect(rr - 5, 0, 5, 512);
+  g.fillStyle = "#315942"; g.fillRect(rl - 8, 0, 8, 512); g.fillRect(rr, 0, 8, 512);
+  g.fillStyle = "#cdbb82"; g.fillRect(rl, 0, 5, 512); g.fillRect(rr - 5, 0, 5, 512);
   // 中央虚线
   g.fillStyle = "rgba(255,255,255,.78)";
   for (let y = 0; y < 512; y += 128) g.fillRect(250, y + 10, 12, 54);
@@ -231,12 +269,12 @@ for (let i = 0; i < 16; i++) {
 
 /* ================= 3D 士兵模型 ================= */
 const soldierGeo = {
-  torso: new THREE.CapsuleGeometry(0.32, 0.3, 4, 8),
-  limb: new THREE.CapsuleGeometry(0.105, 0.28, 3, 6),
-  head: new THREE.SphereGeometry(0.27, 10, 7),
-  helmet: new THREE.SphereGeometry(0.31, 10, 6),
-  hand: new THREE.SphereGeometry(0.115, 7, 5),
-  boot: new THREE.BoxGeometry(0.24, 0.15, 0.34),
+  torso: new THREE.CapsuleGeometry(0.36, 0.32, 7, 12),
+  limb: new THREE.CapsuleGeometry(0.12, 0.29, 5, 9),
+  head: new THREE.SphereGeometry(0.34, 18, 13),
+  helmet: new THREE.SphereGeometry(0.365, 18, 11, 0, Math.PI * 2, 0, Math.PI * .62),
+  hand: new THREE.SphereGeometry(0.135, 12, 8),
+  boot: new THREE.CapsuleGeometry(.135, .12, 4, 8),
   cube: new THREE.BoxGeometry(1, 1, 1),
   shadow: new THREE.CircleGeometry(0.58, 18),
 };
@@ -248,8 +286,8 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   const rig = new THREE.Group();
   g.add(rig);
   const weapon = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
-  const mat = (c, metalness = .02, roughness = .78) => new THREE.MeshStandardMaterial({
-    color: c, metalness, roughness, flatShading: true, emissive: 0x000000, emissiveIntensity: .42
+  const mat = (c, metalness = .02, roughness = .68) => new THREE.MeshStandardMaterial({
+    color: c, metalness, roughness, flatShading: false, emissive: 0x000000, emissiveIntensity: .42
   });
   const dark = new THREE.Color(mainColor).multiplyScalar(0.55).getHex();
 
@@ -278,15 +316,16 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   rig.add(legL, legR);
   part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legL);
   part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legR);
-  part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legL);
-  part(soldierGeo.boot, gunMat, 0, -.53, -.07, 1, 1, 1, legR);
+  const bootL = part(soldierGeo.boot, gunMat, 0, -.53, -.09, 1.2, .82, 1.5, legL);
+  const bootR = part(soldierGeo.boot, gunMat, 0, -.53, -.09, 1.2, .82, 1.5, legR);
+  bootL.rotation.x = bootR.rotation.x = Math.PI / 2;
 
   part(soldierGeo.torso, uniformMat, 0, .98, 0, 1.12, 1.04, .86);
   part(soldierGeo.cube, darkMat, 0, 1.04, -.30, .54, .46, .12); // 胸甲
   if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, .75, -.02, .72, .13, .48); // 腰带
 
-  const head = part(soldierGeo.head, skinMat, 0, 1.58, -.03, 1.16, 1.22, 1.04);
-  part(soldierGeo.helmet, hairMat, 0, 1.78, .03, 1.22, .56, 1.14);
+  const head = part(soldierGeo.head, skinMat, 0, 1.64, -.05, 1.18, 1.13, 1.02);
+  part(soldierGeo.helmet, hairMat, 0, 1.79, .02, 1.2, 1.02, 1.1);
   part(new THREE.ConeGeometry(.22, .52, 5), hairMat, -.22, 1.91, .02, 1, 1, 1.1).rotation.z = -.42;
   part(new THREE.ConeGeometry(.18, .42, 5), hairMat,  .22, 1.88, .02, 1, 1, 1.1).rotation.z = .36;
   part(soldierGeo.cube, accentMat, 0, 1.72, -.31, .72, .075, .07);
@@ -296,10 +335,15 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
     const eyeWhite = mat(0xfffbf1, 0, .35), pupilMat = glowMat;
     const eyeGeo = new THREE.SphereGeometry(.085, 8, 6), pupilGeo = new THREE.SphereGeometry(.048, 7, 5);
     for (const side of [-1, 1]) {
-      part(eyeGeo, eyeWhite, side * .12, 1.61, -.29, 1, 1.18, .5);
-      part(pupilGeo, pupilMat, side * .12, 1.61, -.336, 1, 1.12, .4);
+      part(eyeGeo, eyeWhite, side * .135, 1.66, -.36, 1.15, 1.32, .56);
+      part(pupilGeo, pupilMat, side * .135, 1.65, -.414, 1.05, 1.2, .42);
+      const brow = part(soldierGeo.cube, hairMat, side * .135, 1.765, -.397, .16, .025, .018);
+      brow.rotation.z = side * -.14;
     }
-    face = part(soldierGeo.cube, hairMat, 0, 1.44, -.3, .19, .028, .025);
+    part(new THREE.SphereGeometry(.052, 9, 6), skinMat, 0, 1.585, -.405, .85, 1.05, .9);
+    face = part(new THREE.TorusGeometry(.085, .013, 5, 12, Math.PI), hairMat, 0, 1.49, -.397, 1, .65, 1);
+    face.rotation.z = Math.PI;
+    for (const side of [-1, 1]) part(new THREE.SphereGeometry(.06, 10, 7), skinMat, side * .345, 1.64, -.03, .72, 1, .6);
   }
 
   if (tier >= 2) {
@@ -383,6 +427,7 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   g.userData.face = face;
   g.userData.weaponId = weaponId;
   g.userData.tier = tier;
+  g.userData.visualStage = tier;
   g.userData.armBase = armBase;
   g.userData.phase = Math.random() * Math.PI * 2;
   g.userData.recoil = 0;
@@ -393,6 +438,11 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   return g;
 }
 function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
+  if (soldier.userData.mixer) {
+    soldier.userData.mixer.update(1 / 60);
+    soldier.rotation.z += (-lean * .12 - soldier.rotation.z) * .18;
+    return;
+  }
   const p = t * speed + soldier.userData.phase;
   const ud = soldier.userData;
   ud.legs[0].rotation.x =  Math.sin(p) * amp;
@@ -477,7 +527,8 @@ function drawCrateFace(g, crate) {
 
 function makeCrate(x, z) {
   const reward = pickReward();
-  const count = 5 + Math.floor(Math.random() * 11);   // 5~15 次
+  const baseCount = 5 + Math.floor(Math.random() * 11);   // 5~15 次
+  const count = Math.max(1, Math.ceil(baseCount * (1 - skillLevel(player.skills, "supply") * .08)));
   const canvas = document.createElement("canvas");
   canvas.width = 256; canvas.height = 256;
   const g2d = canvas.getContext("2d");
@@ -529,6 +580,7 @@ function disposeCrate(crate) {
 const bulletGeo = new THREE.CapsuleGeometry(0.10, 0.36, 2, 5);
 bulletGeo.rotateX(Math.PI / 2);
 const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfff2a8, toneMapped: false });
+const droneBulletMat = new THREE.MeshBasicMaterial({ color: 0x75ecff, toneMapped: false });
 const weaponBulletMats = {};
 function bulletMaterial(weaponId) {
   if (weaponBulletMats[weaponId]) return weaponBulletMats[weaponId];
@@ -612,8 +664,9 @@ const player = {
   x: 0, tx: null, vx: 0, lastX: 0,
   soldiers: [],          // {id, mesh, weaponId, tier, armor, maxArmor, fireCd}
   damageBonus: 0, fireRateMul: 1,
-  shield: 0, spreadT: 0, slowT: 0, hurtT: 0,
-  xp: 0, level: 1,
+  shield: 0, spreadT: 0, slowT: 0, hurtT: 0, moveSlowT: 0,
+  xp: 0, level: 1, skills: {}, pendingPromotion: false, prestigeReady: false,
+  shieldKillProgress: 0, airstrikeKillProgress: 0,
 };
 let nextUnitId = 1;
 let nextEnemyId = 1;
@@ -625,7 +678,8 @@ let particles = [];      // {mesh, vx, vy, vz, life}
 let floatTexts = [];     // {sprite, life}
 let spawnEnemyCd = 60, spawnCrateCd = 150;
 let gates = [], spawnGateCd = 500;          // 选择门
-let walls = [], spawnWallCd = 320;          // 阻碍墙壁
+let traps = [], spawnTrapCd = 320;           // 小范围陷阱
+let drones = [];
 let combo = 0, comboTimer = 0, critT = 0;   // 连杀 / 暴击模式
 let shake = 0;                              // 摄像机震动强度
 let cameraFollowX = 0, screenFlashT = 0;
@@ -634,7 +688,30 @@ let bossHazards = [];
 let bossProjectiles = [];
 const screenFlashEl = document.getElementById("screenFlash");
 const speedFxEl = document.getElementById("speedFx");
-function addShake(a) { shake = Math.min(shake + a, 0.45); }
+function addShake(a) {
+  shake = Math.min(shake + a, 0.45);
+  if (a >= .28) globalThis.soldierRushHaptic?.(a >= .4);
+}
+
+function applyRankInsignia(mesh, rank) {
+  const rig = mesh.userData.rig;
+  if (!rig) return;
+  const group = new THREE.Group();
+  group.position.set(-.23, 1.13, -.405);
+  const badgeMat = new THREE.MeshStandardMaterial({ color: rank >= 12 ? 0xffd66b : 0xc7e7ff, emissive: rank >= 12 ? 0x7a3d00 : 0x183e62, emissiveIntensity: .55, metalness: .55, roughness: .3 });
+  const bars = 1 + ((rank - 1) % 4);
+  for (let i = 0; i < bars; i++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(.075, .025, .025), badgeMat);
+    bar.position.set(i * .085, Math.floor((rank - 1) / 4) * .035, 0);
+    group.add(bar);
+  }
+  if (rank >= 9) {
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(.055, 0), badgeMat);
+    star.position.set(.13, .09, 0); group.add(star);
+  }
+  rig.add(group);
+  mesh.userData.rankInsignia = group;
+}
 function flashScreen(color = "#ffffff", strength = .35) {
   screenFlashT = Math.max(screenFlashT, strength * 12);
   screenFlashEl.style.background = color;
@@ -644,6 +721,11 @@ function flashScreen(color = "#ffffff", strength = .35) {
 /* ================= 输入 ================= */
 const keys = {};
 window.addEventListener("keydown", e => {
+  if (player.pendingPromotion && ["1", "2", "3"].includes(e.key)) {
+    e.preventDefault();
+    selectSkill(Number(e.key) - 1);
+    return;
+  }
   keys[e.key.toLowerCase()] = true;
   if ((e.key === " " || e.key === "Enter") && !running) { e.preventDefault(); startGame(); }
 });
@@ -696,7 +778,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function addParticles(x, y, z, color, n = 10, spd = 0.22) {
-  const cap = mobileDevice ? 220 : 340;
+  const cap = quality.particleCap;
   for (let i = 0; i < n && particles.length < cap; i++) {
     const m = new THREE.Mesh(particleGeo, pMat(color));
     m.position.set(x, y, z);
@@ -759,11 +841,41 @@ function disposeSoldierMesh(mesh) {
 
 function unitPower(unit) {
   const weapon = WEAPON_DEFS[unit.weaponId];
-  const shots = weapon.type === "shotgun" ? 5 : 1;
-  return ((weapon.damage + player.damageBonus) * shots * 60 / (weapon.fireRate * player.fireRateMul)) * Math.pow(MERGE_POWER, unit.tier - 1);
+  const shots = inheritedShotDirections().length;
+  const interval = effectiveFireInterval();
+  const skillDamage = 1.05 + skillLevel(player.skills, "firepower") * .1;
+  const medalDamage = 1 + saveData.medals * .04;
+  return ((weapon.damage + player.damageBonus) * skillDamage * medalDamage * shots * 60 / interval) * Math.pow(MERGE_POWER, unit.tier - 1);
 }
 function heroUnit() { return player.soldiers[0] || null; }
 function totalPower() { const hero = heroUnit(); return hero ? unitPower(hero) : 0; }
+
+function inheritedShotDirections() {
+  const stage = weaponStageForRank(player.level);
+  const dirs = [0];
+  if (stage >= 2) dirs.push(-.07, .07);
+  if (stage >= 3) dirs.push(-.2, -.1, .1, .2);
+  if (stage >= 4) dirs.push(-.16, .16);
+  if (stage >= 5) dirs.push(-.22, -.11, .11, .22);
+  const split = skillLevel(player.skills, "split");
+  for (let i = 1; i <= split; i++) dirs.push(-.04 * i, .04 * i);
+  if (player.spreadT > 0) dirs.push(-.28, -.24, .24, .28);
+  return [...new Set(dirs.map(value => Math.round(value * 1000) / 1000))].sort((a, b) => a - b);
+}
+
+function effectiveBaseFireRate() {
+  const stage = weaponStageForRank(player.level);
+  return Math.min(...WEAPON_ORDER.slice(0, stage).map(id => WEAPON_DEFS[id].fireRate));
+}
+
+function effectiveFireInterval() {
+  const reloadMul = Math.pow(.94, skillLevel(player.skills, "reload"));
+  return Math.max(4, effectiveBaseFireRate() * player.fireRateMul * reloadMul);
+}
+
+function heroMaxArmor(rank = player.level) {
+  return 24 + rank * 3 + 5 + saveData.medals * 3 + skillLevel(player.skills, "armor") * 8;
+}
 
 function enforceSingleHero() {
   if (player.soldiers.length <= 1) return;
@@ -772,56 +884,112 @@ function enforceSingleHero() {
   player.soldiers = hero ? [hero] : [];
 }
 
-function createPlayerUnit(weaponId = "rifle", tier = 1, x = player.x, z = PLAYER_Z) {
+function createPlayerUnit(weaponId = "rifle", rank = player.level, x = player.x, z = PLAYER_Z) {
   const def = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
-  const color = new THREE.Color(0x2389df).lerp(new THREE.Color(def.color), .16 + tier * .08).getHex();
-  const mesh = makeSoldier(color, weaponId, tier);
-  mesh.scale.setScalar(1.08 + tier * .035);
+  const visualStage = RANK_DEFS[Math.max(0, rank - 1)].visualStage + 1;
+  const weaponStage = weaponStageForRank(rank);
+  const color = new THREE.Color(0x1e78c8).lerp(new THREE.Color(def.color), .18 + visualStage * .08).getHex();
+  const mesh = makeSoldier(color, weaponId, visualStage);
+  applyRankInsignia(mesh, rank);
+  mesh.scale.setScalar(1.12 + visualStage * .045);
   mesh.position.set(x, 0, z);
   scene.add(mesh);
-  const maxArmor = 24 + tier * 6;
-  return { id: nextUnitId++, mesh, weaponId, tier, armor: maxArmor, maxArmor, fireCd: Math.random() * def.fireRate };
+  const maxArmor = heroMaxArmor(rank);
+  return { id: nextUnitId++, mesh, weaponId, tier: weaponStage, rank, armor: maxArmor, maxArmor, fireCd: Math.random() * effectiveFireInterval() };
 }
 
 function removePlayerUnit(unit) {
   scene.remove(unit.mesh);
-  disposeSoldierMesh(unit.mesh);
+  if (!unit.mesh.userData.externalAsset) disposeSoldierMesh(unit.mesh);
 }
 
 function createHero() {
-  const unit = createPlayerUnit(WEAPON_ORDER[player.level - 1], player.level);
+  const unit = createPlayerUnit(weaponForRank(player.level), player.level);
   player.soldiers = [unit];
+  void tryAttachHeroGLB(unit);
   return unit;
 }
 
-function evolveHero() {
+let heroModelChecked = false;
+let heroModelAvailable = false;
+async function tryAttachHeroGLB(unit) {
+  try {
+    if (!heroModelChecked) {
+      heroModelChecked = true;
+      heroModelAvailable = (await fetch("./assets/models/hero.glb", { method: "HEAD" })).ok;
+    }
+    if (!heroModelAvailable) return;
+    const asset = await assetManager.instantiateAnimated("./assets/models/hero.glb");
+    if (heroUnit()?.id !== unit.id) return;
+    const oldMesh = unit.mesh;
+    asset.root.position.copy(oldMesh.position);
+    asset.root.rotation.copy(oldMesh.rotation);
+    asset.root.scale.setScalar(1.08);
+    asset.root.userData.mixer = asset.mixer;
+    asset.root.userData.externalAsset = true;
+    const runClip = asset.clips.get("run") || asset.clips.get("idle");
+    if (runClip) asset.mixer.clipAction(runClip).play();
+    scene.remove(oldMesh);
+    disposeSoldierMesh(oldMesh);
+    unit.mesh = asset.root;
+    scene.add(asset.root);
+  } catch {
+    heroModelAvailable = false;
+  }
+}
+
+function evolveHero(nextRank = player.level) {
   const previous = heroUnit();
-  if (!previous || player.level >= MAX_TIER) return false;
+  if (!previous) return false;
   const position = previous.mesh.position.clone();
+  const armorRatio = previous.maxArmor > 0 ? previous.armor / previous.maxArmor : 1;
+  const previousFireCd = previous.fireCd;
+  const previousWeapon = previous.weaponId;
   removePlayerUnit(previous);
-  player.level++;
-  const hero = createPlayerUnit(WEAPON_ORDER[player.level - 1], player.level, position.x, position.z);
+  const hero = createPlayerUnit(weaponForRank(nextRank), nextRank, position.x, position.z);
+  hero.armor = Math.max(1, Math.round(hero.maxArmor * armorRatio));
+  hero.fireCd = Math.min(previousFireCd, effectiveFireInterval());
   hero.mesh.userData.mergeT = 1;
   player.soldiers = [hero];
+  void tryAttachHeroGLB(hero);
   const def = WEAPON_DEFS[hero.weaponId];
   addParticles(position.x, 1.5, position.z, def.css, mobileDevice ? 34 : 58, .42);
-  addImpactRing(position.x, .08, position.z, def.color, 5 + player.level);
-  addFloatText(position.x, 4.4, position.z, `${def.label} 进化!`, def.css, 6.2);
+  addImpactRing(position.x, .08, position.z, def.color, 5 + hero.tier);
+  const text = previousWeapon === hero.weaponId ? `${rankName(nextRank)} 晋升!` : `${rankName(nextRank)} · ${def.label} 进化!`;
+  addFloatText(position.x, 4.4, position.z, text, def.css, 6.2);
   addShake(.35); flashScreen(def.css, .42);
   return true;
 }
 
 function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
-  if (player.level >= MAX_TIER) {
-    player.damageBonus += Math.max(1, Math.ceil(amount / 50));
-    addFloatText(x, 3.8, z, `火力 +${Math.max(1, Math.ceil(amount / 50))}`, "#ffcf66", 4.5);
+  const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .12);
+  const gained = Math.max(1, Math.round(amount * xpMul));
+  if (player.prestigeReady) {
+    player.xp = COMMANDER_MERIT;
+    score += gained * 2;
+    addFloatText(x, 3.5, z, `功勋转化 +${gained * 2}分`, "#ffd66b", 4.1);
     return;
   }
-  player.xp += amount;
-  addFloatText(x, 3.5, z, `经验 +${amount}`, "#b8f58b", 4.3);
-  while (player.level < MAX_TIER && player.xp >= HERO_XP_TO_NEXT[player.level]) {
-    player.xp -= HERO_XP_TO_NEXT[player.level];
-    evolveHero();
+  player.xp += gained;
+  addFloatText(x, 3.5, z, `${player.level >= MAX_RANK ? "功勋" : "经验"} +${gained}`, player.level >= MAX_RANK ? "#ffd66b" : "#b8f58b", 4.3);
+  processRankProgress();
+}
+
+function processRankProgress() {
+  if (player.pendingPromotion || player.prestigeReady) return;
+  if (player.level < MAX_RANK) {
+    const needed = rankXpToNext(player.level);
+    if (player.xp < needed) return;
+    player.xp -= needed;
+    player.level++;
+    evolveHero(player.level);
+    openSkillChoice();
+    return;
+  }
+  if (player.xp >= COMMANDER_MERIT) {
+    player.xp = COMMANDER_MERIT;
+    player.prestigeReady = true;
+    openPrestigePanel();
   }
 }
 
@@ -956,7 +1124,27 @@ function killEnemy(e) {
   addFloatText(ep.x, 2.2, ep.z, "+" + e.score, "#ffd54f");
   addShake(e.type === "heavy" ? 0.16 : 0.07);
   combo++;
-  comboTimer = 150;   // 2.5 秒内继续击杀可延续连杀
+  comboTimer = 150 + skillLevel(player.skills, "combo") * 45;
+  const shieldSkill = skillLevel(player.skills, "shield");
+  if (shieldSkill > 0) {
+    player.shieldKillProgress++;
+    const threshold = 28 - shieldSkill * 3;
+    if (player.shieldKillProgress >= threshold) {
+      player.shieldKillProgress = 0;
+      player.shield = Math.min(9, player.shield + 1);
+      addFloatText(player.x, 3.8, PLAYER_Z - 1, "护盾充能!", "#66e7ff", 4.2);
+      addImpactRing(player.x, .08, PLAYER_Z, 0x66e7ff, 3.2);
+    }
+  }
+  const airstrikeSkill = skillLevel(player.skills, "airstrike");
+  if (airstrikeSkill > 0 && !airstrikeResolving) {
+    player.airstrikeKillProgress++;
+    const threshold = [30, 24, 18][airstrikeSkill - 1];
+    if (player.airstrikeKillProgress >= threshold) {
+      player.airstrikeKillProgress = 0;
+      triggerAirstrike(airstrikeSkill);
+    }
+  }
   if (combo === 5)  { critT = 600; addFloatText(player.x, 5, -8, "连杀×5 暴击模式!", "#ffb300", 6.5); }
   if (combo === 10) { player.spreadT = Math.max(player.spreadT, 600); addFloatText(player.x, 5, -8, "连杀×10 子弹扩散!", "#ba68c8", 6.5); }
   if (combo >= 15)  { player.slowT = Math.max(player.slowT, 420); addFloatText(player.x, 5, -8, "连杀×15 时间减速!", "#fff176", 6.5); combo = 0; }
@@ -1028,37 +1216,88 @@ function disposeGate(g) {
   });
 }
 
-/* ================= 阻碍墙壁 ================= */
-/* 单面墙壁挡住部分路宽:被扫到的士兵直接阵亡,子弹也会被阻挡 */
-function makeWallTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256; c.height = 128;
-  const g = c.getContext("2d");
-  g.fillStyle = "#909090"; g.fillRect(0, 0, 256, 128);            // 混凝土底
-  for (let i = 0; i < 90; i++) {
-    g.fillStyle = Math.random() < .5 ? "#878787" : "#9c9c9c";
-    g.fillRect(Math.random() * 256, Math.random() * 128, 7, 7);
+/* ================= 小范围陷阱 ================= */
+const TRAP_TYPES = ["spikes", "mine", "emp"];
+function makeTrap(type, x, z) {
+  const mesh = new THREE.Group();
+  const groundMat = new THREE.MeshBasicMaterial({
+    color: type === "spikes" ? 0xff7043 : type === "mine" ? 0xffb22e : 0x65d8ff,
+    transparent: true, opacity: .3, side: THREE.DoubleSide, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+  });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.72, type === "mine" ? 1.48 : 1.28, 30), groundMat);
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .035; mesh.add(ring);
+  let radius = type === "spikes" ? 1.05 : type === "mine" ? 1.55 : 1.35;
+  if (type === "spikes") {
+    const spikeMat = new THREE.MeshStandardMaterial({ color: 0x9aa9b4, metalness: .72, roughness: .3 });
+    for (let i = 0; i < 8; i++) {
+      const angle = i / 8 * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(.12, .55, 7), spikeMat);
+      spike.position.set(Math.cos(angle) * .68, .28, Math.sin(angle) * .68);
+      mesh.add(spike);
+    }
+  } else if (type === "mine") {
+    const shell = new THREE.Mesh(new THREE.CylinderGeometry(.5, .66, .22, 12), new THREE.MeshStandardMaterial({ color: 0x343b45, metalness: .68, roughness: .3 }));
+    shell.position.y = .12; mesh.add(shell);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(.12, 10, 7), new THREE.MeshBasicMaterial({ color: 0xffb22e, toneMapped: false }));
+    beacon.position.y = .32; mesh.add(beacon); mesh.userData.beacon = beacon;
+  } else {
+    const field = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.32, .08, 24), new THREE.MeshBasicMaterial({ color: 0x3888aa, transparent: true, opacity: .42, toneMapped: false }));
+    field.position.y = .05; mesh.add(field);
+    for (let i = 0; i < 3; i++) {
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(.45 + i * .23, .025, 5, 24), new THREE.MeshBasicMaterial({ color: 0x76efff, toneMapped: false }));
+      arc.rotation.x = Math.PI / 2; arc.position.y = .14 + i * .06; mesh.add(arc);
+    }
   }
-  g.fillStyle = "#6f6f6f"; g.fillRect(0, 34, 256, 4); g.fillRect(0, 82, 256, 4);  // 砌缝
-  for (let x = -32; x < 288; x += 32) {                            // 顶部黄黑警示斜纹
-    g.fillStyle = ((x / 32) % 2 === 0) ? "#fbc02d" : "#212121";
-    g.beginPath();
-    g.moveTo(x, 0); g.lineTo(x + 16, 0); g.lineTo(x + 4, 24); g.lineTo(x - 12, 24);
-    g.closePath(); g.fill();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  mesh.position.set(x, 0, z);
+  scene.add(mesh);
+  return { type, mesh, radius, triggered: false, resolved: false, fuse: type === "mine" ? -1 : 0, groundMat };
 }
-const wallGeo = new THREE.BoxGeometry(1, 2.2, 0.7);
-const wallMat = new THREE.MeshStandardMaterial({ map: makeWallTexture(), roughness: .86, metalness: .02 });
-function spawnWall() {
-  const halfW = rand(2.0, 3.6);                                    // 挡住 1/4 ~ 1/2 路宽
-  const m = new THREE.Mesh(wallGeo, wallMat);
-  m.scale.x = halfW * 2;
-  m.position.set(rand(-ROAD_HALF + halfW, ROAD_HALF - halfW), 1.1, SPAWN_Z - 4);
-  scene.add(m);
-  walls.push({ mesh: m, halfW, hit: false });
+
+function spawnTrapGroup() {
+  const safeX = rand(-ROAD_HALF + 2.3, ROAD_HALF - 2.3);
+  const wanted = 1 + Math.floor(Math.random() * 3);
+  const xs = [];
+  for (let attempt = 0; attempt < 24 && xs.length < wanted; attempt++) {
+    const x = rand(-ROAD_HALF + 1.5, ROAD_HALF - 1.5);
+    if (Math.abs(x - safeX) < 2.2 || xs.some(other => Math.abs(other - x) < 2.4)) continue;
+    xs.push(x);
+  }
+  if (!xs.length) xs.push(safeX > 0 ? -4.8 : 4.8);
+  xs.forEach((x, index) => traps.push(makeTrap(TRAP_TYPES[Math.floor(Math.random() * TRAP_TYPES.length)], x, SPAWN_Z - index * 2.2)));
+}
+
+function disposeTrap(trap) {
+  scene.remove(trap.mesh);
+  trap.mesh.traverse(object => {
+    if (object.geometry) object.geometry.dispose();
+    if (object.material) object.material.dispose();
+  });
+}
+
+function tryDodgeDamage() {
+  return Math.random() < skillLevel(player.skills, "danger") * .1;
+}
+
+function hurtHero(amount, label, color = "#ff5252", allowDodge = true) {
+  const hero = heroUnit();
+  if (!hero) return false;
+  if (allowDodge && tryDodgeDamage()) {
+    addFloatText(player.x, 3.4, PLAYER_Z - 1, "危险感知 · 闪避!", "#b792ff", 4.2);
+    addImpactRing(player.x, .08, PLAYER_Z, 0xb792ff, 3);
+    return false;
+  }
+  if (player.shield > 0) {
+    player.shield = Math.max(0, player.shield - amount);
+    addFloatText(player.x, 3.4, PLAYER_Z - 1, "护盾抵挡!", "#66e7ff", 4.2);
+    addImpactRing(player.x, .08, PLAYER_Z, 0x66e7ff, 3.2);
+    return false;
+  }
+  const lost = damageUnit(hero, amount);
+  player.hurtT = 18;
+  addShake(.3); flashScreen(color, .38);
+  addFloatText(player.x, 3.5, PLAYER_Z - 1, lost ? "主角倒下!" : label, color, 4.2);
+  return lost;
 }
 
 /* ================= 道具生效 ================= */
@@ -1096,17 +1335,13 @@ function applyReward(crate) {
 function fireUnitWeapon(unit, p) {
   const def = WEAPON_DEFS[unit.weaponId] || WEAPON_DEFS.rifle;
   const tierMul = Math.pow(MERGE_POWER, unit.tier - 1);
-  const damage = Math.max(1, (def.damage + player.damageBonus) * tierMul);
-  let dirs = [0];
-  if (def.type === "shotgun") dirs = [-.2, -.1, 0, .1, .2];
-  else if (def.type === "smg") dirs = [rand(-.035, .035)];
-  if (unit.tier === 2) dirs = dirs.flatMap(vx => [vx - .07, vx + .07]);
-  if (unit.tier === 4) dirs = dirs.flatMap(vx => [vx - .16, vx, vx + .16]);
-  if (unit.tier >= 5) dirs = dirs.flatMap(vx => [vx - .22, vx - .11, vx, vx + .11, vx + .22]);
-  if (player.spreadT > 0 && def.type !== "shotgun") dirs = [-.12, 0, .12];
-  else if (player.spreadT > 0) dirs = [-.28, -.2, -.1, 0, .1, .2, .28];
+  const skillDamage = 1.05 + skillLevel(player.skills, "firepower") * .1;
+  const medalDamage = 1 + saveData.medals * .04;
+  const damage = Math.max(1, (def.damage + player.damageBonus) * tierMul * skillDamage * medalDamage);
+  let dirs = inheritedShotDirections();
+  if (def.type === "smg") dirs = dirs.map(vx => vx + rand(-.018, .018));
 
-  unit.fireCd = Math.max(4, def.fireRate * player.fireRateMul);
+  unit.fireCd = effectiveFireInterval();
   unit.mesh.userData.recoil = 1;
   if (unit.tier >= 4) {
     addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.7 : 1.15);
@@ -1114,19 +1349,22 @@ function fireUnitWeapon(unit, p) {
   }
   addMuzzleFlash(p.x + .1, p.z - 1.15);
   for (const vx of dirs) {
-    const mesh = new THREE.Mesh(bulletGeo, bulletMaterial(unit.weaponId));
+    const mesh = bulletMeshPool.acquire();
+    mesh.visible = true;
+    mesh.material = bulletMaterial(unit.weaponId);
     mesh.position.set(p.x + .1, 1.04 + unit.tier * .025, p.z - 1.0);
     mesh.rotation.y = Math.atan2(-vx, def.speed);
     if (def.type === "rocket") mesh.scale.set(2.2, 2.2, 2.8);
     else if (def.type === "laser") mesh.scale.set(.72, .72, 3.2);
     else if (def.type === "pierce") mesh.scale.z = 1.8;
-    mesh.add(new THREE.Mesh(trailGeo, trailMat));
     scene.add(mesh);
     bullets.push({
       mesh, weaponId: unit.weaponId, type: def.type, vx, dmg: damage,
       px: mesh.position.x, pz: mesh.position.z, speed: def.speed,
-      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 2 + unit.tier : 1),
-      radius: def.radius || (unit.tier >= 5 ? 1.35 : 0), starburst: unit.tier >= 5, hitIds: new Set(),
+      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 2 + unit.tier : 1) + skillLevel(player.skills, "pierce"),
+      radius: (def.radius || (unit.tier >= 5 ? 1.35 : 0)) * (1 + skillLevel(player.skills, "blast") * .12),
+      blastMul: 1 + skillLevel(player.skills, "blast") * .1,
+      starburst: unit.tier >= 5, hitIds: new Set(),
     });
   }
 }
@@ -1140,7 +1378,7 @@ function explodeProjectile(b, x, z) {
     if (e.dead) continue;
     const dx = e.mesh.position.x - x, dz = e.mesh.position.z - z;
     if (dx * dx + dz * dz <= radius * radius) {
-      e.hp -= b.dmg;
+      e.hp -= b.dmg * (b.blastMul || 1);
       e.mesh.userData.hit = 1;
       drawHpLabel(e);
       if (e.hp <= 0) killEnemy(e);
@@ -1148,7 +1386,7 @@ function explodeProjectile(b, x, z) {
   }
   if (boss) {
     const dx = boss.mesh.position.x - x, dz = boss.mesh.position.z - z;
-    if (dx * dx + dz * dz <= radius * radius) damageBoss(b.dmg, x, z);
+    if (dx * dx + dz * dz <= radius * radius) damageBoss(b.dmg * (b.blastMul || 1), x, z);
   }
 }
 
@@ -1156,7 +1394,7 @@ function clearHazardsForBoss() {
   enemies.forEach(removeEnemy); enemies = [];
   crates.forEach(disposeCrate); crates = [];
   gates.forEach(disposeGate); gates = [];
-  walls.forEach(w => scene.remove(w.mesh)); walls = [];
+  traps.forEach(disposeTrap); traps = [];
 }
 
 function makeBossModel(def, bossNumber) {
@@ -1173,6 +1411,36 @@ function makeBossModel(def, bossNumber) {
   }
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.18, 0), coreMat);
   core.position.set(0, 1.05, -.39); mesh.userData.rig.add(core);
+  const rig = mesh.userData.rig;
+  if (def.theme === "tank") {
+    for (const side of [-1, 1]) {
+      const cannon = new THREE.Mesh(new THREE.CylinderGeometry(.11, .18, 1.25, 10), armorMat);
+      cannon.rotation.x = Math.PI / 2; cannon.position.set(side * .62, 1.45, -.65); rig.add(cannon);
+    }
+    const turret = new THREE.Mesh(new THREE.BoxGeometry(1.05, .35, .72), armorMat); turret.position.set(0, 1.62, .08); rig.add(turret);
+  } else if (def.theme === "shield") {
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(.82, .82, .18, 8), armorMat);
+    shield.rotation.x = Math.PI / 2; shield.position.set(0, 1.05, -.72); rig.add(shield);
+    const shieldCore = new THREE.Mesh(new THREE.RingGeometry(.32, .58, 18), coreMat); shieldCore.position.set(0, 1.05, -.83); rig.add(shieldCore);
+  } else if (def.theme === "sniper") {
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.08, .12, 2.6, 10), armorMat);
+    barrel.rotation.x = Math.PI / 2; barrel.position.set(.28, 1.25, -1.1); rig.add(barrel);
+    const scope = new THREE.Mesh(new THREE.SphereGeometry(.18, 10, 7), coreMat); scope.position.set(.28, 1.52, -.42); rig.add(scope);
+  } else if (def.theme === "rocket") {
+    for (const side of [-1, 1]) {
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(.56, .72, .92), armorMat); pod.position.set(side * .72, 1.45, .18); rig.add(pod);
+      for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .3, 8), coreMat);
+        tube.rotation.x = Math.PI / 2; tube.position.set(side * .72 + (col - .5) * .22, 1.3 + row * .24, -.36); rig.add(tube);
+      }
+    }
+  } else if (def.theme === "energy") {
+    for (let i = 0; i < 3; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(.72 + i * .18, .035, 6, 28), coreMat);
+      ring.position.set(0, 1.2, .2); ring.rotation.set(Math.PI / 2, i * .7, i * .4); rig.add(ring);
+      mesh.userData.energyRings ||= []; mesh.userData.energyRings.push(ring);
+    }
+  }
   mesh.userData.bossCore = core;
   return mesh;
 }
@@ -1185,7 +1453,8 @@ function beginBossBattle() {
   bossProjectiles = [];
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
-  const maxHp = Math.round(420 * Math.pow(1.7, bossNumber - 1));
+  const baseHp = Math.round(420 * Math.pow(1.7, bossNumber - 1));
+  const maxHp = Math.max(baseHp, Math.round(totalPower() * 20));
   const mesh = makeBossModel(def, bossNumber);
   mesh.position.set(0, 0, -58); mesh.rotation.y = Math.PI;
   scene.add(mesh);
@@ -1239,6 +1508,14 @@ function defeatBoss() {
   bossProjectiles = [];
   boss = null; bossCount++; nextBossDistance += 500; bossWarning = false;
   bossBarEl.classList.add("hidden");
+  const repairLevel = skillLevel(player.skills, "repair");
+  const hero = heroUnit();
+  if (repairLevel > 0 && hero) {
+    const ratio = [0, .2, .35, .5][repairLevel];
+    const healed = Math.max(1, Math.round(hero.maxArmor * ratio));
+    hero.armor = Math.min(hero.maxArmor, hero.armor + healed);
+    addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
+  }
   if (unlock) {
     const def = WEAPON_DEFS[unlock];
     grantHeroXp(110, player.x, PLAYER_Z - 5);
@@ -1250,7 +1527,7 @@ function defeatBoss() {
   }
   addImpactRing(0, .08, -22, defeated.def.accent, 8);
   addShake(.45);
-  spawnEnemyCd = 150; spawnCrateCd = 100; spawnGateCd = 360; spawnWallCd = 300;
+  spawnEnemyCd = 150; spawnCrateCd = 100; spawnGateCd = 360; spawnTrapCd = 300;
 }
 
 function shatterBoss(target) {
@@ -1344,24 +1621,69 @@ function launchBossAttack() {
   if (!boss) return;
   const core = boss.mesh.userData.bossCore;
   if (core) core.scale.setScalar(2.4);
-  addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, 16, .28);
-  addShake(.18);
-  flashScreen(boss.attackIndex % 2 === 0 ? "#ff4560" : "#ffad4f", .18);
-  if (boss.attackIndex % 2 === 0) {
-    const lane = clamp(Math.round(player.x / 4) * 4, -4, 4);
-    launchBossProjectile("lane", lane, -12);
-    createBossHazard("lane", lane, -12);
-    addFloatText(lane, 3.3, -10, "危险车道!", "#ff6673", 4.2);
-  } else {
-    for (let i = 0; i < 3; i++) {
-      const targetX = clamp(player.x + rand(-3.2, 3.2), -6.5, 6.5), targetZ = rand(-1.5, 3.5);
-      launchBossProjectile("missile", targetX, targetZ);
-      createBossHazard("missile", targetX, targetZ);
-    }
-    addFloatText(player.x, 3.3, -6, "导弹来袭!", "#ffad61", 4.2);
+  addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, mobileDevice ? 18 : 30, .34);
+  addImpactRing(boss.mesh.position.x, .2, boss.mesh.position.z + 1, boss.def.accent, 4.2);
+  addShake(.24);
+  flashScreen(`#${boss.def.accent.toString(16).padStart(6, "0")}`, .24);
+  const phase = boss.hp / boss.maxHp <= .35 ? 3 : boss.hp / boss.maxHp <= .65 ? 2 : 1;
+  const lane = x => { launchBossProjectile("lane", x, -12); createBossHazard("lane", x, -12); };
+  const missile = (x, z = rand(-1.4, 2.6)) => { launchBossProjectile("missile", x, z); createBossHazard("missile", x, z); };
+  const alt = boss.attackIndex % 2;
+  switch (boss.def.theme) {
+    case "tank":
+      if (!alt) {
+        lane(clamp(Math.round(player.x / 4) * 4, -4, 4));
+        if (phase >= 3) lane(player.x > 0 ? -4 : 4);
+        addFloatText(0, 4, -10, "重炮扫射!", "#ffc75f", 5);
+      } else {
+        for (let i = 0; i < 2 + phase; i++) missile(clamp(player.x + rand(-5, 5), -6.5, 6.5));
+        addFloatText(0, 4, -8, "炮击阵列!", "#ff9e55", 5);
+      }
+      break;
+    case "shield":
+      if (!alt) {
+        lane(clamp(player.x, -5, 5));
+        addFloatText(0, 4, -10, "盾甲冲锋!", "#8de8ff", 5);
+      } else {
+        const edge = player.x >= 0 ? 4.5 : -4.5;
+        missile(edge, 0); missile(-edge, 0);
+        if (phase >= 2) missile(0, 0);
+        addFloatText(0, 4, -8, "护盾震荡!", "#91efff", 5);
+      }
+      break;
+    case "sniper":
+      if (!alt) {
+        lane(clamp(player.x, -5.5, 5.5));
+        addFloatText(0, 4, -10, "锁定光束!", "#e2b8ff", 5);
+      } else {
+        const safe = Math.floor(rand(0, 4));
+        [-6, -2, 2, 6].forEach((x, i) => { if (i !== safe) missile(x, 0); });
+        addFloatText(0, 4, -8, "多重瞄准!", "#d8a5ff", 5);
+      }
+      break;
+    case "rocket":
+      if (!alt) {
+        for (let i = 0; i < 3 + phase; i++) missile(rand(-6.5, 6.5));
+        addFloatText(0, 4, -8, "错峰导弹雨!", "#ffad69", 5);
+      } else {
+        const safe = rand(-5, 5);
+        [-6, -3, 0, 3, 6].forEach(x => { if (Math.abs(x - safe) > 2.2) missile(x, 0); });
+        addFloatText(safe, 4, -8, "地毯轰炸 · 寻找缺口!", "#ffd06b", 5.2);
+      }
+      break;
+    default:
+      if (!alt) {
+        lane(player.x > 0 ? 4 : -4);
+        if (phase >= 2) lane(player.x > 0 ? -4 : 4);
+        addFloatText(0, 4, -10, "等离子切割!", "#72f5ff", 5);
+      } else {
+        const safe = [-6, -2, 2, 6][Math.floor(rand(0, 4))];
+        [-6, -2, 2, 6].forEach(x => { if (x !== safe) missile(x, 0); });
+        addFloatText(safe, 4, -8, "能量网格 · 安全节点!", "#79fbff", 5.1);
+      }
   }
   boss.attackIndex++;
-  boss.attackCd = Math.max(120, 245 - boss.number * 9);
+  boss.attackCd = Math.max(92, 240 - boss.number * 8 - (phase - 1) * 34);
 }
 
 function resolveBossHazard(h) {
@@ -1372,7 +1694,7 @@ function resolveBossHazard(h) {
     const inside = h.kind === "lane" ? Math.abs(p.x - h.x) < 1.6 : ((p.x - h.x) ** 2 + (p.z - h.z) ** 2 < h.radius ** 2);
     if (inside) {
       hits++;
-      damageUnit(unit, 1 + Math.floor((boss?.number || 1) / 3));
+      hurtHero(1 + Math.floor((boss?.number || 1) / 3), "Boss技能命中!", "#ff5264", true);
       addParticles(p.x, 1.1, p.z, h.kind === "lane" ? "#ff5b68" : "#ff9a5b", 18, .36);
     }
   }
@@ -1398,6 +1720,10 @@ function updateBoss(t) {
   boss.mesh.position.x = Math.sin(t * .7) * 2.2;
   animateWalk(boss.mesh, t, 4.5, .24);
   if (boss.mesh.userData.bossCore) boss.mesh.userData.bossCore.scale.setScalar(1 + Math.sin(t * 7) * .18);
+  if (boss.mesh.userData.energyRings) boss.mesh.userData.energyRings.forEach((ring, index) => {
+    ring.rotation.x += .018 + index * .006;
+    ring.rotation.z -= .024 + index * .004;
+  });
   if (boss.introT > 0) { boss.introT--; return; }
   boss.attackCd -= timeMul;
   if (boss.attackCd <= 0) launchBossAttack();
@@ -1458,6 +1784,8 @@ function update() {
     if (distance >= nextBossDistance) beginBossBattle();
   }
   groundTex.offset.y += worldSpeed / 30;
+  weather.update(distance);
+  updateRain();
   speedFxEl.style.opacity = critT > 0 ? ".16" : combo >= 5 ? ".09" : "0";
 
   /* 树木循环 */
@@ -1473,9 +1801,10 @@ function update() {
 
   /* 玩家移动 */
   const prevX = player.x;
-  if (keys["arrowleft"]  || keys["a"]) { player.tx = null; player.x -= 0.22; }
-  if (keys["arrowright"] || keys["d"]) { player.tx = null; player.x += 0.22; }
-  if (player.tx != null) player.x += (player.tx - player.x) * 0.2;
+  const moveMul = player.moveSlowT > 0 ? .55 : 1;
+  if (keys["arrowleft"]  || keys["a"]) { player.tx = null; player.x -= 0.22 * moveMul; }
+  if (keys["arrowright"] || keys["d"]) { player.tx = null; player.x += 0.22 * moveMul; }
+  if (player.tx != null) player.x += (player.tx - player.x) * 0.2 * moveMul;
   const margin = squadHalfWidth() + 0.7;
   player.x = clamp(player.x, -ROAD_HALF + margin, ROAD_HALF - margin);
   player.vx += ((player.x - prevX) - player.vx) * .28;
@@ -1497,6 +1826,7 @@ function update() {
   /* buff 计时 */
   if (player.spreadT > 0) player.spreadT--;
   if (player.slowT > 0) player.slowT--;
+  if (player.moveSlowT > 0) player.moveSlowT--;
   if (critT > 0) critT--;
   if (comboTimer > 0) { comboTimer--; if (comboTimer === 0) combo = 0; }   // 连杀超时归零
   shieldMesh.visible = player.shield > 0;
@@ -1511,6 +1841,7 @@ function update() {
     unit.fireCd--;
     if (unit.fireCd <= 0) fireUnitWeapon(unit, pos[i]);
   });
+  updateDrones(t);
 
   /* 子弹 */
   for (const b of bullets) {
@@ -1522,7 +1853,7 @@ function update() {
     }
   }
   bullets = bullets.filter(b => {
-    if (b.mesh.position.z < SPAWN_Z - 15 || b.dead) { scene.remove(b.mesh); return false; }
+    if (b.mesh.position.z < SPAWN_Z - 15 || b.dead) { bulletMeshPool.release(b.mesh); return false; }
     return true;
   });
 
@@ -1542,10 +1873,10 @@ function update() {
     spawnGatePair();
     spawnGateCd = rand(650, 950);
   }
-  spawnWallCd--;
-  if (!boss && !bossWarning && spawnWallCd <= 0) {
-    spawnWall();
-    spawnWallCd = Math.max(280, rand(420, 640) - distance / 25);   // 越到后期越密
+  spawnTrapCd--;
+  if (!boss && !bossWarning && spawnTrapCd <= 0) {
+    spawnTrapGroup();
+    spawnTrapCd = Math.max(280, rand(420, 620) - distance / 30);
   }
 
   /* 选择门移动与穿门判定 */
@@ -1571,8 +1902,41 @@ function update() {
     return true;
   });
 
-  /* 墙壁随卷轴前进 */
-  for (const w of walls) w.mesh.position.z += worldSpeed;
+  /* 小范围陷阱 */
+  for (const trap of traps) {
+    trap.mesh.position.z += worldSpeed;
+    trap.mesh.rotation.y += trap.type === "emp" ? .018 : 0;
+    trap.groundMat.opacity = .22 + Math.sin(t * 7 + trap.mesh.position.x) * .1;
+    if (trap.mesh.userData.beacon) {
+      const beacon = trap.mesh.userData.beacon;
+      beacon.scale.setScalar(.8 + Math.sin(t * (trap.fuse > 0 ? 24 : 7)) * .28);
+    }
+    if (trap.type === "mine" && trap.fuse < 0 && trap.mesh.position.z >= -8) trap.fuse = 30;
+    if (trap.type === "mine" && trap.fuse > 0) trap.fuse--;
+    if (trap.type === "mine" && trap.fuse === 0 && !trap.resolved) {
+      trap.resolved = true;
+      const p = trap.mesh.position;
+      addParticles(p.x, .8, p.z, "#ff9b48", mobileDevice ? 22 : 34, .42);
+      addImpactRing(p.x, .08, p.z, 0xff9b48, 3.2);
+      addShake(.2);
+      if (Math.abs(player.x - p.x) < trap.radius && Math.abs(p.z - PLAYER_Z) < 2.1) hurtHero(3, "地雷伤害 -3", "#ff7043");
+    }
+    if (!trap.resolved && trap.type !== "mine" && Math.abs(trap.mesh.position.z - PLAYER_Z) < .85) {
+      trap.resolved = true;
+      if (Math.abs(player.x - trap.mesh.position.x) < trap.radius) {
+        if (trap.type === "spikes") hurtHero(2, "地刺伤害 -2", "#ff7043");
+        else {
+          hurtHero(1, "电磁伤害 -1", "#65d8ff");
+          player.moveSlowT = Math.max(player.moveSlowT, 120);
+          addFloatText(player.x, 4, PLAYER_Z - 1, "电磁减速 2秒", "#76efff", 4.1);
+        }
+      }
+    }
+  }
+  traps = traps.filter(trap => {
+    if (trap.mesh.position.z > 12) { disposeTrap(trap); return false; }
+    return true;
+  });
 
   /* 敌人移动 */
   const slowMul = player.slowT > 0 ? 0.35 : 1;
@@ -1597,17 +1961,6 @@ function update() {
   for (const b of bullets) {
     if (b.dead) continue;
     const bp = b.mesh.position;
-    // 墙壁阻挡
-    for (const w of walls) {
-      const wp = w.mesh.position;
-      if (Math.abs(bp.x - wp.x) < w.halfW && Math.abs(bp.z - wp.z) < 0.9) {
-        b.dead = true;
-        if (b.type === "rocket" || b.starburst) explodeProjectile(b, bp.x, wp.z);
-        else addParticles(bp.x, rand(0.6, 1.8), wp.z + 0.6, "#bdbdbd", 3, 0.12);
-        break;
-      }
-    }
-    if (b.dead) continue;
     // 箱子
     for (const c of crates) {
       if (c.count <= 0) continue;
@@ -1655,7 +2008,8 @@ function update() {
         b.pierce--;
         if (b.pierce <= 0) b.dead = true;
         let dmg = b.dmg;
-        const crit = critT > 0 && Math.random() < 0.35;
+        const critChance = Math.min(.75, skillLevel(player.skills, "critical") * .06 + (critT > 0 ? .35 : 0));
+        const crit = Math.random() < critChance;
         if (crit) dmg *= 2;
         e.hp -= dmg;
         e.mesh.userData.hit = 1;
@@ -1671,7 +2025,7 @@ function update() {
       }
     }
   }
-  bullets = bullets.filter(b => { if (b.dead) { scene.remove(b.mesh); return false; } return true; });
+  bullets = bullets.filter(b => { if (b.dead) { bulletMeshPool.release(b.mesh); return false; } return true; });
   crates = crates.filter(c => {
     if (c.collected || c.mesh.position.z > 12) {
       disposeCrate(c);
@@ -1693,54 +2047,13 @@ function update() {
       if (dx * dx + dz * dz < 1.4) {
         e.dead = true;
         addParticles(ep.x, 1.2, ep.z, "#90caf9", 12, 0.3);
-        if (player.shield > 0) {
-          player.shield = Math.max(0, player.shield - e.contactDmg);
-          addShake(0.12);
-          addImpactRing(player.x, .08, PLAYER_Z, 0x66e7ff, 3.2);
-          flashScreen("#66e7ff", .22);
-          addFloatText(player.x, 3.2, PLAYER_Z - 1, "护盾抵挡!", "#4dd0e1");
-        } else {
-          const lost = damageUnit(unit, e.contactDmg);
-          player.hurtT = 18;
-          addShake(0.3);                                                  // 受击强震
-          addImpactRing(player.x, .08, PLAYER_Z, 0xff5c64, 3.5);
-          flashScreen("#ff4050", .42);
-        addFloatText(player.x, 3.2, PLAYER_Z - 1, lost ? "主角倒下!" : "护甲 -" + e.contactDmg, "#ff5252");
-        }
+        hurtHero(e.contactDmg, `护甲 -${e.contactDmg}`, "#ff5252", true);
         break;
       }
     }
   }
   enemies = enemies.filter(e => {
     if (e.dead || e.mesh.position.z > 10) { removeEnemy(e); return false; }
-    return true;
-  });
-
-  /* 墙壁撞击判定:墙体 x 范围内的士兵被撞倒,全灭则游戏结束 */
-  for (const w of walls) {
-    if (!w.hit && w.mesh.position.z >= PLAYER_Z - 0.6) {
-      w.hit = true;
-      const wx = w.mesh.position.x;
-      let lost = 0, hitCount = 0;
-      for (const unit of player.soldiers.slice(0, 1)) {
-        const s = unit.mesh;
-        if (Math.abs(s.position.x - wx) < w.halfW + 0.25) {
-          addParticles(s.position.x, 1.2, s.position.z, "#90caf9", 10, 0.28);
-          hitCount++;
-          if (damageUnit(unit, 3)) lost++;
-        }
-      }
-      if (hitCount > 0) {
-        player.hurtT = 18;
-        addShake(0.3);
-        addImpactRing(wx, .08, PLAYER_Z, 0xff5c64, 4.2);
-        flashScreen("#ff4050", .42);
-        addFloatText(wx, 3.6, PLAYER_Z - 1, lost ? "撞墙重创!" : "护甲受损", "#ff5252");
-      }
-    }
-  }
-  walls = walls.filter(w => {
-    if (w.mesh.position.z > 12) { scene.remove(w.mesh); return false; }
     return true;
   });
 
@@ -1835,7 +2148,193 @@ const bossBarEl = document.getElementById("bossBar");
 const bossNameEl = document.getElementById("bossName");
 const bossFillEl = document.getElementById("bossFill");
 const bossHpEl = document.getElementById("bossHp");
+const rankBadgeEl = document.getElementById("rankBadge");
+const choicePanelEl = document.getElementById("choicePanel");
+const choiceTitleEl = document.getElementById("choiceTitle");
+const choiceSubtitleEl = document.getElementById("choiceSubtitle");
+const choiceGridEl = document.getElementById("choiceGrid");
+const prestigePanelEl = document.getElementById("prestigePanel");
+const prestigeNowEl = document.getElementById("prestigeNow");
+const prestigeLaterEl = document.getElementById("prestigeLater");
 let uiPaused = false;
+let currentSkillOptions = [];
+
+function openSkillChoice() {
+  player.pendingPromotion = true;
+  uiPaused = true;
+  clearInputState();
+  currentSkillOptions = chooseSkillOptions(player.skills);
+  choiceTitleEl.textContent = `${rankName(player.level)} 晋升`;
+  choiceSubtitleEl.textContent = `选择一项自动生效的战斗技能 · 当前武器 ${WEAPON_DEFS[weaponForRank(player.level)].label}`;
+  choiceGridEl.innerHTML = "";
+  currentSkillOptions.forEach((skill, index) => {
+    const nextLevel = skillLevel(player.skills, skill.id) + 1;
+    const button = document.createElement("button");
+    button.className = `skill-card ${skill.category}`;
+    button.innerHTML = `<div class="icon">${skill.icon}</div><h3>${index + 1}. ${skill.name}</h3><p>${skill.description(nextLevel)}</p><div class="level">Lv.${nextLevel} / ${skill.maxLevel}</div>`;
+    button.addEventListener("click", () => selectSkill(index));
+    choiceGridEl.appendChild(button);
+  });
+  choicePanelEl.classList.remove("hidden");
+}
+
+let airstrikeResolving = false;
+function triggerAirstrike(level) {
+  if (airstrikeResolving) return;
+  airstrikeResolving = true;
+  const targets = enemies.filter(enemy => !enemy.dead).sort((a, b) => a.mesh.position.z - b.mesh.position.z).slice(0, 2 + level * 2);
+  addFloatText(player.x, 5.2, -8, "空袭支援!", "#ffb25f", 5.8);
+  flashScreen("#ffb25f", .28); addShake(.3);
+  for (const target of targets) {
+    const p = target.mesh.position;
+    addImpactRing(p.x, .08, p.z, 0xff9b48, 2.6 + level * .4);
+    addParticles(p.x, 1, p.z, "#ff9b48", mobileDevice ? 16 : 26, .42);
+    target.hp -= Math.max(8, totalPower() * .12 * level);
+    drawHpLabel(target);
+    if (target.hp <= 0 && !target.dead) killEnemy(target);
+  }
+  if (boss) damageBoss(Math.max(20, totalPower() * .08 * level), boss.mesh.position.x, boss.mesh.position.z);
+  airstrikeResolving = false;
+}
+
+function makeDrone(index) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x344d68, metalness: .55, roughness: .28 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x75ecff, toneMapped: false });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.23, 10, 7), bodyMat);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 5), glowMat);
+  eye.position.z = -.21;
+  group.add(body, eye);
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(.34, .055, .16), bodyMat);
+    wing.position.x = side * .3; wing.rotation.z = side * .2; group.add(wing);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(.055, 7, 5), glowMat);
+    tip.position.set(side * .48, 0, 0); group.add(tip);
+  }
+  group.userData.index = index;
+  group.userData.fireCd = index * 12;
+  scene.add(group);
+  return group;
+}
+
+function syncDrones() {
+  const wanted = skillLevel(player.skills, "drone");
+  while (drones.length < wanted) drones.push(makeDrone(drones.length));
+  while (drones.length > wanted) {
+    const drone = drones.pop();
+    scene.remove(drone);
+    drone.traverse(object => { if (object.geometry) object.geometry.dispose(); if (object.material) object.material.dispose(); });
+  }
+}
+
+function clearDrones() {
+  while (drones.length) {
+    const drone = drones.pop();
+    scene.remove(drone);
+    drone.traverse(object => { if (object.geometry) object.geometry.dispose(); if (object.material) object.material.dispose(); });
+  }
+}
+
+function updateDrones(t) {
+  if (!drones.length) return;
+  const hero = heroUnit();
+  if (!hero) return;
+  drones.forEach((drone, index) => {
+    const side = index % 2 === 0 ? -1 : 1;
+    const row = Math.floor(index / 2);
+    const tx = player.x + side * (1.35 + row * .6);
+    const tz = PLAYER_Z + .65 + row * .55;
+    drone.position.x += (tx - drone.position.x) * .15;
+    drone.position.y = 1.55 + Math.sin(t * 5 + index * 2.1) * .16;
+    drone.position.z += (tz - drone.position.z) * .15;
+    drone.rotation.y += .06;
+    drone.userData.fireCd--;
+    if (drone.userData.fireCd > 0) return;
+    drone.userData.fireCd = Math.max(24, 48 - skillLevel(player.skills, "drone") * 6);
+    const target = boss || enemies.filter(enemy => !enemy.dead).sort((a, b) => b.mesh.position.z - a.mesh.position.z)[0];
+    const targetPos = target?.mesh?.position || new THREE.Vector3(drone.position.x, 0, -40);
+    const dz = Math.max(1, drone.position.z - targetPos.z);
+    const vx = clamp((targetPos.x - drone.position.x) / (dz / 1.55), -.3, .3);
+    const mesh = bulletMeshPool.acquire();
+    mesh.visible = true;
+    mesh.material = droneBulletMat;
+    mesh.scale.set(.65, .65, 1.4);
+    mesh.position.copy(drone.position); mesh.position.z -= .35;
+    scene.add(mesh);
+    bullets.push({ mesh, weaponId: "laser", type: "drone", vx, dmg: Math.max(1, totalPower() * .03), px: mesh.position.x, pz: mesh.position.z, speed: 1.55, pierce: 1, radius: 0, starburst: false, hitIds: new Set() });
+  });
+}
+
+function selectSkill(index) {
+  const skill = currentSkillOptions[index];
+  if (!skill || !player.pendingPromotion) return;
+  player.skills[skill.id] = skillLevel(player.skills, skill.id) + 1;
+  const hero = heroUnit();
+  if (hero && skill.id === "armor") {
+    hero.maxArmor += 8;
+    hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
+  }
+  syncDrones();
+  const color = skill.category === "attack" ? 0xff754d : skill.category === "defense" ? 0x66e7ff : 0xbc8cff;
+  addParticles(player.x, 1.5, PLAYER_Z, `#${color.toString(16).padStart(6, "0")}`, mobileDevice ? 28 : 46, .38);
+  addImpactRing(player.x, .08, PLAYER_Z, color, 5.4);
+  addFloatText(player.x, 4.6, PLAYER_Z - 1, `${skill.name} Lv.${player.skills[skill.id]}`, `#${color.toString(16).padStart(6, "0")}`, 5.4);
+  flashScreen(`#${color.toString(16).padStart(6, "0")}`, .34);
+  choicePanelEl.classList.add("hidden");
+  currentSkillOptions = [];
+  player.pendingPromotion = false;
+  uiPaused = false;
+  lastLoopTime = performance.now();
+  accumulator = 0;
+  updateHUD();
+  setTimeout(processRankProgress, 0);
+}
+
+function openPrestigePanel() {
+  uiPaused = true;
+  clearInputState();
+  prestigePanelEl.classList.remove("hidden");
+}
+
+function performPrestige() {
+  saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
+  saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
+  saveData.prestigeCount += 1;
+  saveData.medals = Math.min(20, saveData.medals + 1);
+  persistSave();
+  prestigePanelEl.classList.add("hidden");
+  player.prestigeReady = false;
+  uiPaused = false;
+  running = false;
+  startGame();
+  addFloatText(0, 5.5, -4, `司令勋章 ×${saveData.medals}`, "#ffd86b", 6.6);
+  flashScreen("#ffd86b", .6);
+}
+
+prestigeNowEl.addEventListener("click", performPrestige);
+prestigeLaterEl.addEventListener("click", () => {
+  prestigePanelEl.classList.add("hidden");
+  uiPaused = false;
+  lastLoopTime = performance.now();
+  accumulator = 0;
+});
+const bulletMeshPool = new ObjectPool(
+  () => {
+    const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+    mesh.add(new THREE.Mesh(trailGeo, trailMat));
+    mesh.visible = false;
+    return mesh;
+  },
+  mesh => {
+    scene.remove(mesh);
+    mesh.visible = false;
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+    mesh.material = bulletMat;
+  },
+  quality.level === "low" ? 48 : 96,
+);
 function setHudText(el, text, pulse = false) {
   if (el.textContent === text) return;
   el.textContent = text;
@@ -1849,12 +2348,12 @@ function setHudText(el, text, pulse = false) {
 function updateHUD() {
   const hero = heroUnit();
   const weapon = hero ? WEAPON_DEFS[hero.weaponId] : WEAPON_DEFS.rifle;
-  const nextXp = HERO_XP_TO_NEXT[player.level] || 0;
+  const nextXp = player.level >= MAX_RANK ? COMMANDER_MERIT : rankXpToNext(player.level);
   setHudText(hScore, "★ " + Math.floor(score));
   setHudText(hDist, Math.floor(distance) + " m");
-  setHudText(hArmy, `等级 ${player.level}/${MAX_TIER} · ${nextXp ? player.xp + "/" + nextXp + " XP" : "满级"}`, true);
+  setHudText(hArmy, `${rankName(player.level)} ${player.level}/${MAX_RANK} · ${player.xp}/${nextXp} ${player.level >= MAX_RANK ? "功勋" : "XP"}`, true);
   setHudText(hPower, "战力 " + Math.round(totalPower()), true);
-  let b = `<span style="color:${weapon.css}">${weapon.label} · 进化阶段 ${player.level}</span>`;
+  let b = `<span style="color:${weapon.css}">${weapon.label} · 武器阶段 ${weaponStageForRank(player.level)}/6</span>`;
   if (hero) b += `<span style="color:#b8f58b">护甲 ${Math.max(0, hero.armor)}/${hero.maxArmor}</span>`;
   if (combo >= 2)         b += `<span style="color:#ff5722">连杀 ×${combo}</span>`;
   if (critT > 0)          b += `<span style="color:#ffb300">暴击模式 ${Math.ceil(critT / 60)}s</span>`;
@@ -1862,30 +2361,40 @@ function updateHUD() {
   if (player.spreadT > 0) b += `<span style="color:#ba68c8">散弹 ${Math.ceil(player.spreadT / 60)}s</span>`;
   if (player.slowT > 0)   b += `<span style="color:#fff176">减缓 ${Math.ceil(player.slowT / 60)}s</span>`;
   if (player.damageBonus > 0) b += `<span style="color:#ff8a65">火力 +${player.damageBonus}</span>`;
-  if (player.fireRateMul < 1) b += `<span style="color:#4fc3f7">射速 +${Math.round((1 / player.fireRateMul - 1) * 100)}%</span>`;
+  b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;
+  if (saveData.medals > 0) b += `<span style="color:#ffd86b">司令勋章 ×${saveData.medals}</span>`;
   buffsEl.innerHTML = b;
+  rankBadgeEl.textContent = `${rankName(player.level)} · ${weapon.label} · ${weather.id === "rain" ? "小雨" : weather.id === "mist" ? "薄雾" : weather.id === "dusk" ? "黄昏" : "阴天"}`;
 }
 
 function renderStatsPanel() {
   const hero = heroUnit();
   const weapon = hero ? WEAPON_DEFS[hero.weaponId] : WEAPON_DEFS.rifle;
-  const nextXp = HERO_XP_TO_NEXT[player.level] || 0;
+  const nextXp = player.level >= MAX_RANK ? COMMANDER_MERIT : rankXpToNext(player.level);
   const rows = [];
   rows.push(["总战力", Math.round(totalPower())]);
   rows.push(["击杀 / 距离", `${kills} / ${Math.floor(distance)}m`]);
-  rows.push(["主角等级", `${player.level} / ${MAX_TIER}`]);
+  rows.push(["军衔", `${rankName(player.level)} · ${player.level} / ${MAX_RANK}`]);
   rows.push(["当前武器", weapon.label]);
-  rows.push(["经验", nextXp ? `${player.xp} / ${nextXp}` : "满级"]);
+  rows.push([player.level >= MAX_RANK ? "司令功勋" : "经验", `${player.xp} / ${nextXp}`]);
   rows.push(["攻击加成", `+${player.damageBonus}`]);
-  rows.push(["射速", `${Math.round(100 / player.fireRateMul)}%`]);
+  rows.push(["射击", `${inheritedShotDirections().length}弹 / ${(60 / effectiveFireInterval()).toFixed(1)}轮每秒`]);
   rows.push(["护盾", player.shield]);
   rows.push(["主角护甲", hero ? `${Math.max(0, hero.armor)} / ${hero.maxArmor}` : "0 / 0"]);
   if (player.spreadT > 0) rows.push(["散弹增益", `${Math.ceil(player.spreadT / 60)}秒`]);
   if (player.slowT > 0) rows.push(["时间减缓", `${Math.ceil(player.slowT / 60)}秒`]);
   if (critT > 0) rows.push(["暴击模式", `${Math.ceil(critT / 60)}秒`]);
+  const skillText = SKILL_DEFS.filter(skill => skillLevel(player.skills, skill.id) > 0).map(skill => `${skill.name} Lv.${skillLevel(player.skills, skill.id)}`).join(" · ");
+  rows.push(["本局技能", skillText || "暂无"]);
+  rows.push(["司令勋章", `${saveData.medals} / 20`]);
+  if (player.prestigeReady) rows.push(["转生", `<button id="statsPrestige" style="padding:5px 12px;border:0;border-radius:12px;background:#d99a27;color:#fff;font-weight:900">授勋转生</button>`]);
   rows.push(["最高Boss", saveData.highestBoss]);
   rows.push(["历史最佳", `${saveData.bestScore}分 / ${saveData.bestDistance}m`]);
   statsContent.innerHTML = rows.map(([title, value]) => `<div class="stat-row"><span class="stat-title">${title}</span><b>${value}</b></div>`).join("");
+  document.getElementById("statsPrestige")?.addEventListener("click", () => {
+    statsPanel.classList.add("hidden");
+    openPrestigePanel();
+  });
 }
 statusToggle.addEventListener("click", () => {
   if (!running) return;
@@ -1908,7 +2417,7 @@ const controlText = document.getElementById("controlText");
 
 function renderProgressText() {
   const weapons = saveData.unlockedWeapons.map(id => WEAPON_DEFS[id]?.label).filter(Boolean).join(" · ");
-  progressText.textContent = `已解锁：${weapons}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
+  progressText.textContent = `已解锁：${weapons}　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
 }
 renderProgressText();
 
@@ -1933,15 +2442,17 @@ window.addEventListener("appinstalled", () => {
 });
 
 function clearWorld() {
-  for (const a of [bullets, particles, trailFx]) a.forEach(o => scene.remove(o.mesh));
+  bullets.forEach(b => bulletMeshPool.release(b.mesh));
+  for (const a of [particles, trailFx]) a.forEach(o => scene.remove(o.mesh));
   impactFx.forEach(fx => { scene.remove(fx.mesh); fx.material.dispose(); });
   impactFx = [];
   enemies.forEach(removeEnemy);
   crates.forEach(disposeCrate);
   gates.forEach(disposeGate);
   gates = [];
-  walls.forEach(w => scene.remove(w.mesh));   // 几何/材质共享,无需 dispose
-  walls = [];
+  traps.forEach(disposeTrap);
+  traps = [];
+  clearDrones();
   if (boss) { scene.remove(boss.mesh); disposeSoldierMesh(boss.mesh); boss = null; }
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
@@ -1962,19 +2473,24 @@ function startGame() {
   nextUnitId = 1; nextEnemyId = 1;
   player.x = 0; player.tx = null; player.vx = 0; player.lastX = 0;
   player.damageBonus = 0; player.fireRateMul = 1;
-  player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0;
-  player.xp = 0; player.level = 1;
+  player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0; player.moveSlowT = 0;
+  player.xp = 0; player.level = 1; player.skills = {}; player.pendingPromotion = false; player.prestigeReady = false;
+  player.shieldKillProgress = 0; player.airstrikeKillProgress = 0;
   createHero();
   frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
   combo = 0; comboTimer = 0; critT = 0; shake = 0;
   bossCount = 0; nextBossDistance = 500; bossWarning = false;
   cameraFollowX = 0; screenFlashT = 0;
   screenFlashEl.style.opacity = "0"; speedFxEl.style.opacity = "0";
-  spawnEnemyCd = 60; spawnCrateCd = 130; spawnGateCd = 450; spawnWallCd = 320;
+  spawnEnemyCd = 60; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
+  weather.reset();
   overlay.classList.add("hidden");
   overlay.classList.remove("game-over");
+  choicePanelEl.classList.add("hidden");
+  prestigePanelEl.classList.add("hidden");
   hud.classList.remove("hidden");
   statusToggle.classList.remove("hidden");
+  rankBadgeEl.classList.remove("hidden");
   statsPanel.classList.add("hidden"); uiPaused = false;
   updateHUD();
   running = true;
@@ -2003,6 +2519,9 @@ function endGame() {
   bossBarEl.classList.add("hidden");
   hud.classList.add("hidden");
   statusToggle.classList.add("hidden");
+  rankBadgeEl.classList.add("hidden");
+  choicePanelEl.classList.add("hidden");
+  prestigePanelEl.classList.add("hidden");
   statsPanel.classList.add("hidden"); uiPaused = false;
   overlay.classList.add("game-over");
   overlay.classList.remove("hidden");
@@ -2039,7 +2558,7 @@ function loop(now = performance.now()) {
       demoSoldier.rotation.y = Math.sin(t * .45) * .16;
     }
   }
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 /* 待机展示:放一个士兵 */
@@ -2048,13 +2567,10 @@ demoSoldier.position.set(0, 0, -2);
 demoSoldier.scale.set(2, 2, 2);
 scene.add(demoSoldier);
 
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-  window.addEventListener("load", async () => {
-    try {
-      const registration = await navigator.serviceWorker.register(`service-worker.js?v=${BUILD_VERSION}`, { updateViaCache: "none" });
-      await registration.update();
-    } catch (_) {}
-  });
-}
-
 loop();
+requestAnimationFrame(() => document.getElementById("loadingScreen")?.classList.add("done"));
+void hydrateNativeSave().then(nativeSave => {
+  if (!nativeSave) return;
+  saveData = nativeSave;
+  renderProgressText();
+});

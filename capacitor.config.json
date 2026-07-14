@@ -1,0 +1,15 @@
+{
+  "appId": "com.soldierrush.commander",
+  "appName": "士兵冲锋 3D",
+  "webDir": "dist",
+  "backgroundColor": "#10192d",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK"
+    }
+  }
+}

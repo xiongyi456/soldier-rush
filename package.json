@@ -1,0 +1,34 @@
+{
+  "name": "soldier-rush",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "cap:sync": "npm run build && cap sync",
+    "cap:android": "npm run cap:sync && cap open android",
+    "cap:ios": "npm run cap:sync && cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "latest",
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest",
+    "@capacitor/haptics": "latest",
+    "@capacitor/preferences": "latest",
+    "@capacitor/status-bar": "latest",
+    "@capacitor/ios": "latest",
+    "three": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest",
+    "@types/three": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "vite-plugin-pwa": "latest"
+  }
+}

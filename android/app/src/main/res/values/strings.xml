@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">士兵冲锋 3D</string>
+    <string name="title_activity_main">士兵冲锋 3D</string>
+    <string name="package_name">com.soldierrush.commander</string>
+    <string name="custom_url_scheme">com.soldierrush.commander</string>
+</resources>

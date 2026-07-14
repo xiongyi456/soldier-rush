@@ -1,40 +1,96 @@
-# 士兵冲锋 3D：手机运行说明
+# 士兵冲锋 3D：司令之路
 
-游戏现已支持手机浏览器触控、响应式界面和桌面安装（PWA）。手机不能直接打开电脑硬盘里的 `index.html`，需要通过网页服务器访问。
+原创战斗 Q 版单人 3D 冲锋游戏。项目使用 Vite、TypeScript 和 Three.js，可作为网页/PWA运行，也已准备好通过 Capacitor 封装 Android 与 iOS。
 
-## 在同一 Wi-Fi 下试玩
+## 当前玩法
 
-1. 在本目录右键 `start-mobile-server.ps1`，选择“使用 PowerShell 运行”。
-2. 如果系统询问防火墙权限，只允许“专用网络”即可。
-3. 让手机和电脑连接同一个 Wi-Fi。
-4. 在手机浏览器中打开脚本显示的地址，例如 `http://192.168.1.5:8080`。
+- 只控制一名主角，角色自动射击，玩家通过键盘、鼠标或触屏左右移动。
+- 从新兵、列兵、下士一路晋升到将军和司令，共13级军衔。
+- 每次晋升暂停战斗，从攻击、防御、战术/支援三张技能卡中选择一项。
+- 武器在关键军衔进化：步枪、冲锋枪、霰弹枪、狙击枪、火箭筒、激光枪。
+- 新武器累计继承历史弹道、穿透、星爆和历史最快射速，升级后不会突然变慢。
+- 道路上会出现地刺、延时地雷和电磁减速区，所有组合都会保留可躲避通道，陷阱不会挡住子弹。
+- 每500米挑战一次 Boss。五种 Boss 分别拥有重炮、盾击、狙击、导弹和能量主题技能。
+- 天气会在阴天、小雨、薄雾和黄昏之间变化，天气只影响画面，不改变命中和移动规则。
+- 司令功勋圆满后可以授勋转生。本局军衔、武器与技能会重置，永久司令勋章保留。
 
-也可以在 PowerShell 中运行：
+## 技术结构
+
+- Vite + TypeScript 严格模式
+- Three.js ES Modules
+- GLTFLoader、AnimationMixer、Meshopt、KTX2 资源管线
+- EffectComposer 与分级辉光效果
+- vite-plugin-pwa 离线缓存
+- Capacitor Android/iOS 壳与原生存档适配
+- 对象池复用高速弹道对象
+
+当前仓库没有附带正式商业 GLB 角色模型，因此默认使用程序化原创战斗 Q 版角色。将符合规范的 `hero.glb` 放到 `public/assets/models/` 后即可接入骨骼模型；详细节点和动画命名见该目录的说明文件。
+
+## 本地运行
+
+需要 Node.js 与 npm。
+
+```powershell
+npm install
+npm run dev
+```
+
+浏览器打开终端显示的地址。也可以在 Windows 中直接运行：
 
 ```powershell
 ./start-mobile-server.ps1
 ```
 
-如果 PowerShell 阻止脚本，可在本目录直接运行：
+## 手机同一 Wi-Fi 试玩
 
 ```powershell
-python -m http.server 8080 --bind 0.0.0.0
+./start-mobile-server.ps1 -Port 8080
 ```
 
-## 发给其他人玩
+手机和电脑连接同一个 Wi-Fi，然后打开脚本显示的局域网地址，例如 `http://192.168.1.5:8080`。
 
-把整个目录部署到任意支持 HTTPS 的静态网站服务即可，例如 GitHub Pages、Cloudflare Pages、Netlify 或自己的服务器。必须同时上传：
+## 构建与预览
 
-- `index.html`
-- `game.js`
-- `three.min.js`
-- `manifest.webmanifest`
-- `service-worker.js`
-- `icon.svg`
+```powershell
+npm run build
+npm run preview
+```
 
-通过 HTTPS 打开后，Android Chrome 会提供“安装到手机桌面”；iPhone Safari 可使用“分享 → 添加到主屏幕”。首次联网加载完成后，安装版可离线启动。
+生产文件生成在 `dist/`。PWA manifest 和 Service Worker 会由构建自动生成，不再手工维护缓存版本。
+
+## Android / iOS
+
+仓库已经包含 `android/` 和 `ios/` 平台工程。修改 Web 游戏后同步构建：
+
+```powershell
+npm run cap:sync
+```
+
+打开原生工程：
+
+```powershell
+npm run cap:android
+npm run cap:ios
+```
+
+iOS 工程需要在 macOS/Xcode 中构建。Android 需要 Android Studio 和可用的 SDK。
 
 ## 操作方式
 
-- 手机：按住游戏画面，左右滑动移动小队。
 - 电脑：方向键、A/D 或鼠标拖动。
+- 手机：按住画面左右滑动。
+- 技能选择：点击技能卡，电脑也可按数字键 1、2、3。
+- 状态按钮：查看军衔、武器、技能、护甲、勋章和转生状态。
+
+## 存档兼容
+
+- Web 使用 localStorage。
+- Capacitor 原生版本使用 Preferences，并与 Web 存档适配器保持相同结构。
+- v1 存档会自动迁移到 v2，保留已解锁武器、最高 Boss、最高分与最远距离。
+- v2 新增司令勋章、转生次数和画质设置。
+
+## 性能策略
+
+- 中端手机以60 FPS为目标，低性能设备降低像素比、粒子、雨滴和后处理。
+- 主角正式模型建议15k–25k三角面、1K纹理、70根以内骨骼。
+- 核心首屏资源建议压缩后控制在12 MB以内，Boss模型按需加载。

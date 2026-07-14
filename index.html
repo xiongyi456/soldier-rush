@@ -7,9 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>士兵冲锋 3D</title>
+<title>士兵冲锋 3D：司令之路</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; min-height: 100dvh; overflow: hidden; background: #8fd8ff; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; touch-action: none; overscroll-behavior: none; user-select: none; }
@@ -195,16 +194,20 @@
 </style>
 </head>
 <body>
+<div id="loadingScreen">
+  <div class="loading-card">正在集结部队…<div class="loading-track"><div id="loadingFill"></div></div></div>
+</div>
 <canvas id="cv"></canvas>
 <div id="speedFx"></div>
 <div id="vignette"></div>
 <div id="screenFlash"></div>
-<div id="controlHint">按住屏幕左右滑动来移动小队</div>
+<div id="controlHint">按住屏幕左右滑动来移动主角</div>
+<div id="rankBadge" class="hidden">新兵 · 步枪</div>
 
 <div id="hud" class="hidden">
   <span class="score" id="hScore">★ 0</span>
   <span class="dist"  id="hDist">0 m</span>
-  <span class="army"  id="hArmy">小队 ×1</span>
+  <span class="army"  id="hArmy">新兵 1/13</span>
   <span class="kills" id="hPower">战力 0</span>
 </div>
 <div id="buffs"></div>
@@ -216,7 +219,7 @@
 </div>
 <div id="statsPanel" class="hidden">
   <div id="statsCard">
-    <h2>小队状态</h2>
+    <h2>主角状态</h2>
     <div id="statsContent"></div>
     <button id="statsClose">返回战斗</button>
   </div>
@@ -225,8 +228,8 @@
 <div id="overlay">
  <div id="overlayContent">
   <h1>士兵冲锋 3D</h1>
-  <p class="intro-line"><span id="controlText">← → 或 A / D 移动小队（支持鼠标 / 触屏拖动）</span><br>
-     士兵自动射击,箱子上有数字,击中相应次数获得道具!</p>
+  <p class="intro-line"><span id="controlText">← → 或 A / D 移动主角（支持鼠标 / 触屏拖动）</span><br>
+     主角自动射击，积累经验晋升军衔，每次晋升可三选一获得技能。</p>
   <div class="items">
     <span style="color:#74b9ff">步枪</span>
     <span style="color:#63e6be">冲锋枪</span>
@@ -235,10 +238,10 @@
     <span style="color:#ff8177">火箭筒</span>
     <span style="color:#7df6ff">激光枪</span>
   </div>
-  <p class="rules"><b style="color:#8bc34a">3个同武器同等级士兵自动合成</b> · 每500米挑战Boss<br>
-     <b style="color:#8bc34a">选对发光门</b>强化小队 · 打爆武器箱招募新兵<br>
-     <b style="color:#fbc02d">左右滑动</b>躲开警示墙和敌军 · 士兵会自动开火<br>
-     连杀奖励：<b style="color:#ffb300">×5 暴击</b> → <b style="color:#ba68c8">×10 散弹</b> → <b style="color:#fff176">×15 减速</b></p>
+  <p class="rules"><b style="color:#8bc34a">新兵一路晋升到司令</b> · 每500米挑战专属Boss<br>
+     <b style="color:#8bc34a">选择发光门与技能卡</b>构筑火力 · 打爆武器箱获得补给<br>
+     <b style="color:#fbc02d">左右滑动</b>躲开地刺、地雷、电磁区和敌军<br>
+     司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
   <div class="big" id="resultText"></div>
   <p id="progressText" class="progress-text"></p>
   <button id="startBtn">开始游戏</button>
@@ -247,10 +250,25 @@
  </div>
 </div>
 
-<script src="three.min.js"></script>
-<script>
-if (typeof THREE === "undefined") document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"><\/script>');
-</script>
-<script src="game.js"></script>
+<div id="choicePanel" class="hidden">
+  <div class="choice-card-wrap">
+    <h2 id="choiceTitle">军衔晋升</h2>
+    <p id="choiceSubtitle">选择一项新技能</p>
+    <div id="choiceGrid" class="choice-grid"></div>
+  </div>
+</div>
+
+<div id="prestigePanel" class="hidden">
+  <div class="choice-card-wrap">
+    <h2>司令功勋圆满</h2>
+    <p>授勋转生会结算本局，并以新兵身份重新出发。军衔、武器和本局技能重置，永久勋章保留。</p>
+    <div class="prestige-actions">
+      <button id="prestigeNow">授勋转生</button>
+      <button id="prestigeLater" class="secondary">继续本局</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
 </body>
 </html>
