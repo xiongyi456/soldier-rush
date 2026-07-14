@@ -269,6 +269,25 @@
   </div>
 </div>
 
+<script>
+window.addEventListener("DOMContentLoaded", function () {
+  var button = document.getElementById("startBtn");
+  if (!button) return;
+  button.addEventListener("click", function (event) {
+    if (window.__soldierRushReady) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (location.protocol === "file:") {
+      alert("新版游戏不能直接双击 index.html。请运行 start-mobile-server.ps1，或在本目录执行 npm run dev 后再打开终端显示的网址。");
+    } else {
+      alert("游戏脚本尚未加载完成。请强制刷新页面；如果是 GitHub Pages，请确认 Pages 已部署 Actions 生成的版本。");
+    }
+  }, true);
+  setTimeout(function () {
+    if (!window.__soldierRushReady && location.protocol === "file:") button.textContent = "请先启动本地服务器";
+  }, 1200);
+});
+</script>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

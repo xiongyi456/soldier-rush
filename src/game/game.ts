@@ -2527,6 +2527,8 @@ function endGame() {
   overlay.classList.remove("hidden");
 }
 startBtn.addEventListener("click", () => { if (!running) startGame(); });
+(globalThis as any).__soldierRushReady = true;
+startBtn.textContent = "开始游戏";
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();

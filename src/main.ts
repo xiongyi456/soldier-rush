@@ -27,4 +27,10 @@ async function bootstrapNativeShell(): Promise<void> {
 }
 
 void bootstrapNativeShell();
-void import("./game/game.ts");
+void import("./game/game.ts").catch((error: unknown) => {
+  console.error("Soldier Rush failed to boot", error);
+  const loading = document.getElementById("loadingScreen");
+  const card = loading?.querySelector<HTMLElement>(".loading-card");
+  if (card) card.innerHTML = "游戏资源加载失败<br><small>请刷新页面，或使用 npm run dev 启动</small>";
+  loading?.classList.remove("done");
+});
