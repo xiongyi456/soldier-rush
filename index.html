@@ -47,7 +47,7 @@
   #hud .dist  { color: #72dcff; margin-left: auto; }
   #buffs {
     z-index: 6;
-    position: fixed; top: calc(52px + env(safe-area-inset-top)); left: calc(16px + env(safe-area-inset-left)); right: calc(82px + env(safe-area-inset-right));
+    position: fixed; top: calc(86px + env(safe-area-inset-top)); left: calc(16px + env(safe-area-inset-left)); right: calc(82px + env(safe-area-inset-right));
     display: flex; flex-wrap: nowrap; gap: 7px; overflow-x: auto; scrollbar-width: none;
     pointer-events: auto; touch-action: pan-x; padding-bottom: 4px;
   }
@@ -170,7 +170,7 @@
   @media (max-width: 700px), (pointer: coarse) {
     #hud { gap: 5px; padding-top: calc(7px + env(safe-area-inset-top)); font-size: 11px; }
     #hud span { padding: 6px 7px; border-radius: 12px; }
-    #buffs { top: calc(39px + env(safe-area-inset-top)); left: calc(8px + env(safe-area-inset-left)); right: calc(66px + env(safe-area-inset-right)); gap: 5px; }
+    #buffs { top: calc(70px + env(safe-area-inset-top)); left: calc(8px + env(safe-area-inset-left)); right: calc(66px + env(safe-area-inset-right)); gap: 5px; }
     #buffs span { padding: 3px 8px; font-size: 11px; }
     #statusToggle { top: calc(38px + env(safe-area-inset-top)); right: calc(7px + env(safe-area-inset-right)); min-width:52px; font-size:11px; }
     #bossBar { top: calc(76px + env(safe-area-inset-top)); width:86vw; }
@@ -209,6 +209,10 @@
   <span class="dist"  id="hDist">0 m</span>
   <span class="army"  id="hArmy">新兵 1/13</span>
   <span class="kills" id="hPower">战力 0</span>
+</div>
+<div id="vitalsHud" class="hidden">
+  <div class="vital-row"><span id="healthText">生命 100/100</span><div class="vital-track"><div id="healthFill" class="health-fill"></div></div></div>
+  <div class="vital-row"><span id="armorText">护甲 32/32</span><div class="vital-track"><div id="armorFill" class="armor-fill"></div></div></div>
 </div>
 <div id="buffs"></div>
 <button id="statusToggle" class="hidden">状态</button>

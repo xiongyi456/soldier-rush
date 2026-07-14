@@ -10,6 +10,16 @@ import { WeatherController } from "./systems/weather.ts";
 import { loadSaveV2, persistSaveV2, hydrateNativeSave } from "./systems/storage.ts";
 import { RANK_DEFS, MAX_RANK, COMMANDER_MERIT, rankName, rankXpToNext, weaponForRank, weaponStageForRank } from "./config/progression.ts";
 import { SKILL_DEFS, chooseSkillOptions, skillLevel } from "./config/skills.ts";
+import {
+  ARMOR_SHARES,
+  DAMAGE_VALUES,
+  bossHealth,
+  enemyHealth,
+  fireInterval,
+  heroMaxHealth,
+  projectileDamage,
+  resolveHeroDamage,
+} from "./config/balance.ts";
 
 const BUILD_VERSION = "commander-road-2";
 
@@ -19,7 +29,6 @@ const SPAWN_Z = -100;         // 敌人生成位置
 const PLAYER_Z = 0;
 const MAX_SQUAD = 1;
 const MAX_TIER = MAX_RANK;
-const MERGE_POWER = 3.4;
 
 const WEAPON_DEFS = {
   rifle:   { label: "步枪",   color: 0x5aa9ff, css: "#74b9ff", damage: 2,  fireRate: 24, speed: 1.28, type: "bullet",  unlockBoss: 0 },
@@ -483,14 +492,15 @@ function tintSoldier(soldier, hex) {
 
 /* ================= 道具箱 ================= */
 const REWARDS = [
-  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 28, xp: 48 },
+  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 24, xp: 48 },
+  { type: "heal",     label: "医疗核心", color: "#ff6685", weight: 10, heal: 20 },
   { type: "firerate", label: "射速+",  color: "#4fc3f7", weight: 14 },
   { type: "damage",   label: "火力+",  color: "#ff8a65", weight: 14 },
   { type: "spread",   label: "散弹",   color: "#ba68c8", weight: 12 },
   { type: "shield",   label: "护盾",   color: "#4dd0e1", weight: 12 },
   { type: "bomb",     label: "炸弹",   color: "#ef5350", weight: 8  },
   { type: "slow",     label: "减缓",   color: "#fff176", weight: 8  },
-  { type: "coin",     label: "金币",   color: "#ffd54f", weight: 12 },
+  { type: "coin",     label: "金币",   color: "#ffd54f", weight: 8 },
 ];
 function pickReward() {
   const total = REWARDS.reduce((s, r) => s + r.weight, 0);
@@ -674,6 +684,8 @@ let bullets = [];        // {mesh, vx, dmg, px, pz}
 let trailFx = [];        // 弹道残影/枪口火光 {mesh, life, maxLife, w, flash}
 let enemies = [];        // {mesh, hp, maxHp, speed, big, hpBar}
 let crates = [];
+let rewardCores = [];
+let enemyAimHazards = [];
 let particles = [];      // {mesh, vx, vy, vz, life}
 let floatTexts = [];     // {sprite, life}
 let spawnEnemyCd = 60, spawnCrateCd = 150;
@@ -840,15 +852,24 @@ function disposeSoldierMesh(mesh) {
 }
 
 function unitPower(unit) {
-  const weapon = WEAPON_DEFS[unit.weaponId];
   const shots = inheritedShotDirections().length;
   const interval = effectiveFireInterval();
-  const skillDamage = 1.05 + skillLevel(player.skills, "firepower") * .1;
-  const medalDamage = 1 + saveData.medals * .04;
-  return ((weapon.damage + player.damageBonus) * skillDamage * medalDamage * shots * 60 / interval) * Math.pow(MERGE_POWER, unit.tier - 1);
+  const critChance = Math.min(.75, skillLevel(player.skills, "critical") * .06 + (critT > 0 ? .35 : 0));
+  return standardProjectileDamage() * shots * 60 / interval * (1 + critChance);
 }
 function heroUnit() { return player.soldiers[0] || null; }
 function totalPower() { const hero = heroUnit(); return hero ? unitPower(hero) : 0; }
+
+function standardProjectileDamage() {
+  const shots = inheritedShotDirections().length;
+  return projectileDamage(
+    weaponStageForRank(player.level),
+    shots,
+    player.damageBonus,
+    skillLevel(player.skills, "firepower") * .1 + .05,
+    saveData.medals * .04,
+  );
+}
 
 function inheritedShotDirections() {
   const stage = weaponStageForRank(player.level);
@@ -869,8 +890,7 @@ function effectiveBaseFireRate() {
 }
 
 function effectiveFireInterval() {
-  const reloadMul = Math.pow(.94, skillLevel(player.skills, "reload"));
-  return Math.max(4, effectiveBaseFireRate() * player.fireRateMul * reloadMul);
+  return fireInterval(effectiveBaseFireRate(), player.fireRateMul, skillLevel(player.skills, "reload"));
 }
 
 function heroMaxArmor(rank = player.level) {
@@ -895,7 +915,8 @@ function createPlayerUnit(weaponId = "rifle", rank = player.level, x = player.x,
   mesh.position.set(x, 0, z);
   scene.add(mesh);
   const maxArmor = heroMaxArmor(rank);
-  return { id: nextUnitId++, mesh, weaponId, tier: weaponStage, rank, armor: maxArmor, maxArmor, fireCd: Math.random() * effectiveFireInterval() };
+  const maxHealth = heroMaxHealth(rank);
+  return { id: nextUnitId++, mesh, weaponId, tier: weaponStage, rank, health: maxHealth, maxHealth, armor: maxArmor, maxArmor, fireCd: Math.random() * effectiveFireInterval() };
 }
 
 function removePlayerUnit(unit) {
@@ -943,11 +964,13 @@ function evolveHero(nextRank = player.level) {
   if (!previous) return false;
   const position = previous.mesh.position.clone();
   const armorRatio = previous.maxArmor > 0 ? previous.armor / previous.maxArmor : 1;
+  const healthRatio = previous.maxHealth > 0 ? previous.health / previous.maxHealth : 1;
   const previousFireCd = previous.fireCd;
   const previousWeapon = previous.weaponId;
   removePlayerUnit(previous);
   const hero = createPlayerUnit(weaponForRank(nextRank), nextRank, position.x, position.z);
   hero.armor = Math.max(1, Math.round(hero.maxArmor * armorRatio));
+  hero.health = Math.min(hero.maxHealth, Math.round(hero.maxHealth * healthRatio + hero.maxHealth * .1));
   hero.fireCd = Math.min(previousFireCd, effectiveFireInterval());
   hero.mesh.userData.mergeT = 1;
   player.soldiers = [hero];
@@ -995,12 +1018,10 @@ function processRankProgress() {
 
 function damageUnit(unit, amount = 1) {
   if (!unit) return false;
-  unit.armor -= amount;
+  const before = unit.armor;
+  unit.armor = Math.max(0, unit.armor - amount);
   unit.mesh.userData.hit = 1;
-  if (unit.armor > 0) return false;
-  player.soldiers = player.soldiers.filter(u => u.id !== unit.id);
-  removePlayerUnit(unit);
-  return true;
+  return before > 0 && unit.armor === 0;
 }
 
 
@@ -1047,46 +1068,54 @@ function removeEnemy(e) {
 
 function spawnEnemyGroup() {
   const difficulty = 1 + distance / 1800 + bossCount * .25;
-  const groupSize = Math.min(1 + Math.floor(Math.random() * difficulty * 1.6), 6);
-  const baseX = rand(-ROAD_HALF + 1.5, ROAD_HALF - 1.5);
+  const cap = mobileDevice ? 24 : 32;
+  const remaining = Math.max(0, cap - enemies.length);
+  if (!remaining) return;
+  const weakWave = Math.random() < .2;
+  const desired = weakWave ? 5 + Math.floor(Math.random() * 4) : distance >= 500 ? 3 + Math.floor(Math.random() * 5) : 2 + Math.floor(Math.random() * 4);
+  const groupSize = Math.min(desired, remaining);
+  const baseX = rand(-ROAD_HALF + 2.2, ROAD_HALF - 2.2);
+  const formation = Math.floor(Math.random() * 3);
+  let gunnersLeft = distance >= 250 ? Math.min(2, Math.random() < .55 ? 1 + (Math.random() < .3 ? 1 : 0) : 0) : 0;
+  const shotDamage = standardProjectileDamage();
   for (let i = 0; i < groupSize; i++) {
-    const roll = Math.random();
-    const type = roll < 0.62 ? "normal" : roll < 0.85 ? "shield" : "heavy";
-    let mesh, hp, speed, radius, sc, contactDmg = 1;
-    if (type === "normal") {
-      /* 普通兵:1 血,速度快 */
-      mesh = makeSoldier(0xd93030);
-      hp = 1;
-      speed = rand(0.10, 0.16) + difficulty * 0.012;
-      radius = 0.75; sc = 10;
-    } else if (type === "shield") {
-      /* 盾兵:持盾牌,需多次攻击 */
-      mesh = makeSoldier(0x607d8b);
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.95, 1.25, 0.12),
-        new THREE.MeshStandardMaterial({ color: 0xb9d2dc, metalness: .45, roughness: .35, flatShading: true })
-      );
-      plate.position.set(0, 0.78, -0.62);
-      mesh.userData.rig.add(plate);
-      hp = 6 + Math.floor(difficulty * 3);
-      speed = rand(0.07, 0.10);
-      radius = 0.85; sc = 30;
-    } else {
-      /* 重装兵:移动慢,撞到损失 2 名士兵 */
-      mesh = makeSoldier(0x8e1b1b);
-      mesh.scale.set(1.7, 1.7, 1.7);
-      hp = 12 + Math.floor(difficulty * 4);
-      speed = rand(0.04, 0.06);
-      radius = 1.25; sc = 50;
-      contactDmg = 2;
+    let type = "normal";
+    if (weakWave) type = "fodder";
+    else if (gunnersLeft > 0 && i >= Math.ceil(groupSize / 2) && Math.random() < .55) { type = "gunner"; gunnersLeft--; }
+    else {
+      const roll = Math.random();
+      type = roll < .54 ? "normal" : roll < .82 ? "shield" : "heavy";
     }
-    mesh.position.set(
-      clamp(baseX + rand(-3, 3), -ROAD_HALF + 1, ROAD_HALF - 1),
-      0, SPAWN_Z + rand(-12, 0)
-    );
+    let mesh, speed, radius, sc, contactDmg;
+    if (type === "fodder") {
+      mesh = makeSoldier(0xe0523d); mesh.scale.setScalar(.82);
+      speed = rand(.13, .18) + difficulty * .01; radius = .62; sc = 7; contactDmg = DAMAGE_VALUES.normal;
+    } else if (type === "normal") {
+      mesh = makeSoldier(0xd93030);
+      speed = rand(.10, .15) + difficulty * .01; radius = .75; sc = 12; contactDmg = DAMAGE_VALUES.normal;
+    } else if (type === "gunner") {
+      mesh = makeSoldier(0x704aa0, "sniper", 2);
+      const sight = new THREE.Mesh(new THREE.SphereGeometry(.13, 9, 6), new THREE.MeshBasicMaterial({ color: 0xff5b77, toneMapped: false }));
+      sight.position.set(0, 1.5, -.5); mesh.userData.rig.add(sight);
+      speed = rand(.055, .075); radius = .78; sc = 38; contactDmg = DAMAGE_VALUES.gunner;
+    } else if (type === "shield") {
+      mesh = makeSoldier(0x607d8b);
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(.95, 1.25, .12), new THREE.MeshStandardMaterial({ color: 0xb9d2dc, metalness: .45, roughness: .35, flatShading: true }));
+      plate.position.set(0, .78, -.62); mesh.userData.rig.add(plate);
+      speed = rand(.07, .10); radius = .85; sc = 30; contactDmg = DAMAGE_VALUES.shield;
+    } else {
+      mesh = makeSoldier(0x8e1b1b); mesh.scale.set(1.65, 1.65, 1.65);
+      speed = rand(.04, .06); radius = 1.25; sc = 55; contactDmg = DAMAGE_VALUES.heavy;
+    }
+    const column = i - (groupSize - 1) / 2;
+    const row = formation === 0 ? Math.abs(column) : formation === 1 ? i % 2 : Math.floor(i / 3);
+    const xOffset = formation === 2 ? (i % 3 - 1) * 2.1 : column * 1.65;
+    const zOffset = formation === 0 ? -row * 2.1 : formation === 1 ? -(i % 2) * 2.4 : -row * 2.2;
+    mesh.position.set(clamp(baseX + xOffset, -ROAD_HALF + 1, ROAD_HALF - 1), 0, SPAWN_Z + zOffset);
     mesh.rotation.y = Math.PI;   // 面向玩家
     scene.add(mesh);
-    const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type, speed, radius, score: sc, contactDmg };
+    const hp = enemyHealth(type, shotDamage, Math.random());
+    const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type, speed, radius, score: sc, contactDmg, attackCd: type === "gunner" ? rand(90, 150) : 0 };
     attachHpLabel(e);
     enemies.push(e);
   }
@@ -1095,7 +1124,9 @@ function spawnEnemyGroup() {
 /* 敌人击碎:按兵种颜色炸出方块碎片 */
 function shatterEnemy(e) {
   const ep = e.mesh.position;
-  const colors = e.type === "shield" ? ["#607d8b", "#b0bec5", "#2f3640"] :
+  const colors = e.type === "gunner" ? ["#704aa0", "#ff6685", "#2f3640"] :
+                 e.type === "fodder" ? ["#e0523d", "#ffb06a", "#2f3640"] :
+                 e.type === "shield" ? ["#607d8b", "#b0bec5", "#2f3640"] :
                  e.type === "heavy"  ? ["#8e1b1b", "#5c1212", "#2f3640"] :
                                        ["#d93030", "#2f3640", "#ffcc99"];
   const n = e.type === "heavy" ? 26 : 16;
@@ -1153,16 +1184,16 @@ function killEnemy(e) {
 /* ================= 选择门(Left / Right Gate) ================= */
 /* 门效果池:正负混合,每对门随机抽两个不同效果,穿门前看清颜色与文字! */
 const GATE_EFFECTS = [
-  { text: "攻击 +3",   color: 0xff7043, css: "#ff9a76", good: true,
-    apply() { player.damageBonus += 3; } },
-  { text: "射速 +20%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
-    apply() { player.fireRateMul = Math.max(.45, player.fireRateMul * .8); } },
+  { text: "火力 +8%",   color: 0xff7043, css: "#ff9a76", good: true,
+    apply() { player.damageBonus = Math.min(.6, player.damageBonus + .08); } },
+  { text: "射速 +10%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
+    apply() { player.fireRateMul = Math.max(.65, player.fireRateMul * .9); } },
   { text: "经验 +55",  color: 0x8bc34a, css: "#aed581", good: true,
     apply() { grantHeroXp(55); } },
-  { text: "攻击 -3",   color: 0xb71c1c, css: "#ef5350", good: false,
-    apply() { player.damageBonus = Math.max(0, player.damageBonus - 3); } },
-  { text: "射速 -20%", color: 0x5d4037, css: "#bcaaa4", good: false,
-    apply() { player.fireRateMul = Math.min(1.8, player.fireRateMul * 1.25); } },
+  { text: "火力 -8%",   color: 0xb71c1c, css: "#ef5350", good: false,
+    apply() { player.damageBonus = Math.max(0, player.damageBonus - .08); } },
+  { text: "射速 -10%", color: 0x5d4037, css: "#bcaaa4", good: false,
+    apply() { player.fireRateMul = Math.min(1.35, player.fireRateMul / .9); } },
   { text: "护甲 -2",   color: 0x7b1fa2, css: "#ce93d8", good: false,
     apply() { const hero = heroUnit(); if (hero) damageUnit(hero, 2); player.hurtT = 18; } },
 ];
@@ -1255,9 +1286,13 @@ function makeTrap(type, x, z) {
 }
 
 function spawnTrapGroup() {
-  const safeX = rand(-ROAD_HALF + 2.3, ROAD_HALF - 2.3);
+  const targetCurrentLane = Math.random() < .45;
+  const safeX = targetCurrentLane
+    ? clamp(player.x + (player.x >= 0 ? -4.4 : 4.4), -ROAD_HALF + 2.3, ROAD_HALF - 2.3)
+    : rand(-ROAD_HALF + 2.3, ROAD_HALF - 2.3);
   const wanted = 1 + Math.floor(Math.random() * 3);
   const xs = [];
+  if (targetCurrentLane && Math.abs(player.x - safeX) >= 2.2) xs.push(clamp(player.x, -ROAD_HALF + 1.5, ROAD_HALF - 1.5));
   for (let attempt = 0; attempt < 24 && xs.length < wanted; attempt++) {
     const x = rand(-ROAD_HALF + 1.5, ROAD_HALF - 1.5);
     if (Math.abs(x - safeX) < 2.2 || xs.some(other => Math.abs(other - x) < 2.4)) continue;
@@ -1279,39 +1314,138 @@ function tryDodgeDamage() {
   return Math.random() < skillLevel(player.skills, "danger") * .1;
 }
 
-function hurtHero(amount, label, color = "#ff5252", allowDodge = true) {
+function hurtHero(amount, label, color = "#ff5252", allowDodge = true, armorShare = ARMOR_SHARES.standard, source = "contact") {
   const hero = heroUnit();
   if (!hero) return false;
-  if (allowDodge && tryDodgeDamage()) {
+  const dodged = allowDodge && tryDodgeDamage();
+  if (dodged) {
     addFloatText(player.x, 3.4, PLAYER_Z - 1, "危险感知 · 闪避!", "#b792ff", 4.2);
     addImpactRing(player.x, .08, PLAYER_Z, 0xb792ff, 3);
     return false;
   }
-  if (player.shield > 0) {
-    player.shield = Math.max(0, player.shield - amount);
+  const result = resolveHeroDamage({
+    health: hero.health,
+    maxHealth: hero.maxHealth,
+    armor: hero.armor,
+    maxArmor: hero.maxArmor,
+    shield: player.shield,
+  }, { amount, armorShare, source, allowDodge }, false);
+  hero.health = result.health;
+  hero.armor = result.armor;
+  player.shield = result.shield;
+  hero.mesh.userData.hit = 1;
+  if (result.shieldConsumed > 0) {
     addFloatText(player.x, 3.4, PLAYER_Z - 1, "护盾抵挡!", "#66e7ff", 4.2);
     addImpactRing(player.x, .08, PLAYER_Z, 0x66e7ff, 3.2);
     return false;
   }
-  const lost = damageUnit(hero, amount);
   player.hurtT = 18;
   addShake(.3); flashScreen(color, .38);
-  addFloatText(player.x, 3.5, PLAYER_Z - 1, lost ? "主角倒下!" : label, color, 4.2);
-  return lost;
+  const breakdown = `生命 -${result.healthDamage}${result.armorDamage ? ` · 护甲 -${result.armorDamage}` : ""}`;
+  addFloatText(player.x, 3.5, PLAYER_Z - 1, result.dead ? "生命归零!" : breakdown || label, color, 4.2);
+  if (result.armorBroken) addFloatText(player.x, 4.15, PLAYER_Z - 1, "护甲破裂!", "#72cfff", 4.1);
+  if (result.dead) {
+    player.soldiers = player.soldiers.filter(unit => unit.id !== hero.id);
+    removePlayerUnit(hero);
+  }
+  return result.dead;
 }
 
-/* ================= 道具生效 ================= */
-function applyReward(crate) {
-  const { x, z } = { x: crate.mesh.position.x, z: crate.mesh.position.z };
-  const r = crate.reward;
+function createEnemyAimHazard(enemy) {
+  if (enemyAimHazards.length >= 2) return false;
+  const group = new THREE.Group();
+  const markerMat = new THREE.MeshBasicMaterial({ color: 0xff365a, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffcf70, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.92, 1.28, 34), ringMat);
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .04; group.add(ring);
+  const disk = new THREE.Mesh(new THREE.CircleGeometry(.92, 34), markerMat);
+  disk.rotation.x = -Math.PI / 2; disk.position.y = .025; group.add(disk);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.035, .09, 4.8, 8), ringMat);
+  beam.position.y = 2.4; group.add(beam);
+  group.position.set(player.x, 0, PLAYER_Z);
+  scene.add(group);
+  enemyAimHazards.push({ mesh: group, x: player.x, timer: 54, maxTimer: 54, markerMat, ringMat, sourceEnemyId: enemy.id });
+  addFloatText(player.x, 3.7, PLAYER_Z - 1, "远程锁定!", "#ff6d83", 4.2);
+  return true;
+}
+
+function disposeEnemyAimHazard(hazard) {
+  scene.remove(hazard.mesh);
+  hazard.mesh.traverse(object => { if (object.geometry) object.geometry.dispose(); });
+  hazard.markerMat.dispose(); hazard.ringMat.dispose();
+}
+
+function updateEnemyAimHazards(t) {
+  for (const hazard of enemyAimHazards) {
+    hazard.timer--;
+    const progress = 1 - hazard.timer / hazard.maxTimer;
+    hazard.mesh.rotation.y += .08;
+    hazard.mesh.scale.setScalar(.88 + progress * .25 + Math.sin(t * 18) * .04);
+    hazard.markerMat.opacity = .28 + progress * .58;
+    hazard.ringMat.opacity = .62 + Math.sin(t * 20) * .25;
+    if (hazard.timer <= 0 && !hazard.resolved) {
+      hazard.resolved = true;
+      addParticles(hazard.x, .8, PLAYER_Z, "#ff526d", mobileDevice ? 18 : 28, .38);
+      addImpactRing(hazard.x, .08, PLAYER_Z, 0xff526d, 2.8);
+      flashScreen("#ff526d", .18); addShake(.16);
+      if (Math.abs(player.x - hazard.x) < 1.25) hurtHero(DAMAGE_VALUES.gunner, "远程射击命中", "#ff526d", true, ARMOR_SHARES.ranged, "ranged");
+    }
+  }
+  enemyAimHazards = enemyAimHazards.filter(hazard => {
+    if (hazard.timer <= 0) { disposeEnemyAimHazard(hazard); return false; }
+    return true;
+  });
+}
+
+/* ================= 奖励核心 / 道具生效 ================= */
+function spawnRewardCore(crate) {
+  const group = new THREE.Group();
+  const color = new THREE.Color(crate.reward.color).getHex();
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.42, 1), new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: .72, metalness: .28, roughness: .22,
+  }));
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(.72, 14, 10), new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: .18, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+  }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.78, .045, 7, 24), new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+  ring.rotation.x = Math.PI / 2;
+  group.add(core, glow, ring);
+  const label = makeTextSprite(crate.reward.label, crate.reward.color, 3.4);
+  label.position.y = 1.25; group.add(label);
+  group.position.set(crate.mesh.position.x, .72, crate.mesh.position.z);
+  scene.add(group);
+  rewardCores.push({ mesh: group, reward: crate.reward, life: 360, phase: Math.random() * Math.PI * 2, collected: false, pickupRadius: 1.3, magnetRadius: 2.5, label });
+}
+
+function disposeRewardCore(core) {
+  scene.remove(core.mesh);
+  core.mesh.traverse(object => {
+    if (object.geometry) object.geometry.dispose();
+    if (object.material) {
+      if (object.material.map) object.material.map.dispose();
+      object.material.dispose();
+    }
+  });
+}
+
+function applyReward(r, x, z) {
   addParticles(x, 1.2, z, r.color, 24, 0.3);
   addImpactRing(x, .08, z, r.color, 2.2);
   flashScreen(r.color, .28);
   addFloatText(x, 3, z, r.label, r.color);
   switch (r.type) {
     case "xp":       grantHeroXp(r.xp || 45, x, z); break;
-    case "firerate": player.fireRateMul = Math.max(.45, player.fireRateMul * .88); break;
-    case "damage":   player.damageBonus += 1; break;
+    case "heal": {
+      const hero = heroUnit();
+      if (hero) {
+        const healed = Math.min(r.heal || 20, hero.maxHealth - hero.health);
+        hero.health += healed;
+        addFloatText(x, 3.8, z, `生命 +${healed}`, "#ff7894", 4.4);
+      }
+      break;
+    }
+    case "firerate": player.fireRateMul = Math.max(.65, player.fireRateMul * .9); break;
+    case "damage":   player.damageBonus = Math.min(.6, player.damageBonus + .08); break;
     case "spread":   player.spreadT = 600; break;                        // 10 秒散弹
     case "shield":   player.shield = Math.min(player.shield + 3, 9); break;
     case "slow":     player.slowT = 420; break;                          // 7 秒减缓
@@ -1334,10 +1468,7 @@ function applyReward(crate) {
 
 function fireUnitWeapon(unit, p) {
   const def = WEAPON_DEFS[unit.weaponId] || WEAPON_DEFS.rifle;
-  const tierMul = Math.pow(MERGE_POWER, unit.tier - 1);
-  const skillDamage = 1.05 + skillLevel(player.skills, "firepower") * .1;
-  const medalDamage = 1 + saveData.medals * .04;
-  const damage = Math.max(1, (def.damage + player.damageBonus) * tierMul * skillDamage * medalDamage);
+  const damage = standardProjectileDamage();
   let dirs = inheritedShotDirections();
   if (def.type === "smg") dirs = dirs.map(vx => vx + rand(-.018, .018));
 
@@ -1369,7 +1500,7 @@ function fireUnitWeapon(unit, p) {
   }
 }
 
-function explodeProjectile(b, x, z) {
+function explodeProjectile(b, x, z, primaryTarget = null) {
   const radius = b.radius || 2.8;
   addParticles(x, 1.1, z, "#ff8a5c", 28, .42);
   addImpactRing(x, .08, z, 0xff7a55, radius * 1.35);
@@ -1378,7 +1509,7 @@ function explodeProjectile(b, x, z) {
     if (e.dead) continue;
     const dx = e.mesh.position.x - x, dz = e.mesh.position.z - z;
     if (dx * dx + dz * dz <= radius * radius) {
-      e.hp -= b.dmg * (b.blastMul || 1);
+      e.hp -= b.dmg * (b.blastMul || 1) * (e.id === primaryTarget ? 1 : .6);
       e.mesh.userData.hit = 1;
       drawHpLabel(e);
       if (e.hp <= 0) killEnemy(e);
@@ -1386,13 +1517,15 @@ function explodeProjectile(b, x, z) {
   }
   if (boss) {
     const dx = boss.mesh.position.x - x, dz = boss.mesh.position.z - z;
-    if (dx * dx + dz * dz <= radius * radius) damageBoss(b.dmg * (b.blastMul || 1), x, z);
+    if (dx * dx + dz * dz <= radius * radius) damageBoss(b.dmg * (b.blastMul || 1) * (primaryTarget === "boss" ? 1 : .6), x, z);
   }
 }
 
 function clearHazardsForBoss() {
   enemies.forEach(removeEnemy); enemies = [];
   crates.forEach(disposeCrate); crates = [];
+  rewardCores.forEach(disposeRewardCore); rewardCores = [];
+  enemyAimHazards.forEach(disposeEnemyAimHazard); enemyAimHazards = [];
   gates.forEach(disposeGate); gates = [];
   traps.forEach(disposeTrap); traps = [];
 }
@@ -1445,6 +1578,21 @@ function makeBossModel(def, bossNumber) {
   return mesh;
 }
 
+function estimateBossDps() {
+  const hero = heroUnit();
+  if (!hero) return 1;
+  const def = WEAPON_DEFS[hero.weaponId] || WEAPON_DEFS.rifle;
+  const travelFrames = 27 / Math.max(.1, def.speed);
+  const explosionReach = hero.tier >= 5 ? (def.radius || 1.35) : 0;
+  const hitCount = Math.max(1, inheritedShotDirections().filter(vx => Math.abs(vx * travelFrames) <= 2.35 + explosionReach).length);
+  const critChance = Math.min(.75, skillLevel(player.skills, "critical") * .06 + (critT > 0 ? .35 : 0));
+  const weaponDps = standardProjectileDamage() * hitCount * 60 / effectiveFireInterval() * (1 + critChance);
+  const droneLevel = skillLevel(player.skills, "drone");
+  const droneInterval = Math.max(24, 48 - droneLevel * 6);
+  const droneDps = droneLevel * standardProjectileDamage() * .35 * 60 / droneInterval;
+  return weaponDps + droneDps;
+}
+
 function beginBossBattle() {
   clearHazardsForBoss();
   bossHazards.forEach(disposeBossHazard);
@@ -1453,8 +1601,8 @@ function beginBossBattle() {
   bossProjectiles = [];
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
-  const baseHp = Math.round(420 * Math.pow(1.7, bossNumber - 1));
-  const maxHp = Math.max(baseHp, Math.round(totalPower() * 20));
+  const estimatedDps = estimateBossDps();
+  const maxHp = bossHealth(bossNumber, estimatedDps);
   const mesh = makeBossModel(def, bossNumber);
   mesh.position.set(0, 0, -58); mesh.rotation.y = Math.PI;
   scene.add(mesh);
@@ -1510,6 +1658,11 @@ function defeatBoss() {
   bossBarEl.classList.add("hidden");
   const repairLevel = skillLevel(player.skills, "repair");
   const hero = heroUnit();
+  if (hero) {
+    const healthRestored = Math.max(1, Math.round(hero.maxHealth * .15));
+    hero.health = Math.min(hero.maxHealth, hero.health + healthRestored);
+    addFloatText(player.x, 4.55, PLAYER_Z - 2, `生命恢复 +${healthRestored}`, "#ff7894", 4.4);
+  }
   if (repairLevel > 0 && hero) {
     const ratio = [0, .2, .35, .5][repairLevel];
     const healed = Math.max(1, Math.round(hero.maxArmor * ratio));
@@ -1694,7 +1847,7 @@ function resolveBossHazard(h) {
     const inside = h.kind === "lane" ? Math.abs(p.x - h.x) < 1.6 : ((p.x - h.x) ** 2 + (p.z - h.z) ** 2 < h.radius ** 2);
     if (inside) {
       hits++;
-      hurtHero(1 + Math.floor((boss?.number || 1) / 3), "Boss技能命中!", "#ff5264", true);
+      hurtHero(12 + (boss?.number || 1) * 2, "Boss技能命中!", "#ff5264", true, ARMOR_SHARES.boss, "boss");
       addParticles(p.x, 1.1, p.z, h.kind === "lane" ? "#ff5b68" : "#ff9a5b", 18, .36);
     }
   }
@@ -1705,10 +1858,10 @@ function resolveBossHazard(h) {
 function spawnBossMinions() {
   const count = Math.min(2 + Math.ceil((boss?.number || 1) / 2), 6);
   for (let i = 0; i < count; i++) {
-    const hp = 3 + (boss?.number || 1) * 2;
+    const hp = enemyHealth("normal", standardProjectileDamage(), .65);
     const mesh = makeSoldier(0xc83b42, "rifle", 1);
     mesh.position.set(rand(-6, 6), 0, -42 - rand(0, 8)); mesh.rotation.y = Math.PI; scene.add(mesh);
-    const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type: "normal", speed: .11 + (boss?.number || 1) * .008, radius: .75, score: 25, contactDmg: 1 };
+    const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type: "normal", speed: .11 + (boss?.number || 1) * .008, radius: .75, score: 25, contactDmg: DAMAGE_VALUES.normal, attackCd: 0 };
     attachHpLabel(e); enemies.push(e);
   }
 }
@@ -1865,7 +2018,8 @@ function update() {
   }
   spawnCrateCd--;
   if (!boss && !bossWarning && spawnCrateCd <= 0) {
-    crates.push(makeCrate(rand(-ROAD_HALF + 2, ROAD_HALF - 2), SPAWN_Z));
+    const side = Math.random() < .5 ? -1 : 1;
+    crates.push(makeCrate(side < 0 ? rand(-ROAD_HALF + 1.6, -2.2) : rand(2.2, ROAD_HALF - 1.6), SPAWN_Z));
     spawnCrateCd = rand(280, 460);
   }
   spawnGateCd--;
@@ -1919,14 +2073,14 @@ function update() {
       addParticles(p.x, .8, p.z, "#ff9b48", mobileDevice ? 22 : 34, .42);
       addImpactRing(p.x, .08, p.z, 0xff9b48, 3.2);
       addShake(.2);
-      if (Math.abs(player.x - p.x) < trap.radius && Math.abs(p.z - PLAYER_Z) < 2.1) hurtHero(3, "地雷伤害 -3", "#ff7043");
+      if (Math.abs(player.x - p.x) < trap.radius && Math.abs(p.z - PLAYER_Z) < 2.1) hurtHero(DAMAGE_VALUES.mine, "地雷命中", "#ff7043", true, ARMOR_SHARES.standard, "trap");
     }
     if (!trap.resolved && trap.type !== "mine" && Math.abs(trap.mesh.position.z - PLAYER_Z) < .85) {
       trap.resolved = true;
       if (Math.abs(player.x - trap.mesh.position.x) < trap.radius) {
-        if (trap.type === "spikes") hurtHero(2, "地刺伤害 -2", "#ff7043");
+        if (trap.type === "spikes") hurtHero(DAMAGE_VALUES.spikes, "地刺命中", "#ff7043", true, ARMOR_SHARES.standard, "trap");
         else {
-          hurtHero(1, "电磁伤害 -1", "#65d8ff");
+          hurtHero(DAMAGE_VALUES.emp, "电磁命中", "#65d8ff", true, ARMOR_SHARES.standard, "trap");
           player.moveSlowT = Math.max(player.moveSlowT, 120);
           addFloatText(player.x, 4, PLAYER_Z - 1, "电磁减速 2秒", "#76efff", 4.1);
         }
@@ -1941,10 +2095,19 @@ function update() {
   /* 敌人移动 */
   const slowMul = player.slowT > 0 ? 0.35 : 1;
   for (const e of enemies) {
-    e.mesh.position.z += (e.speed * slowMul + worldSpeed * 0.5);
+    const gunnerHolding = e.type === "gunner" && e.mesh.position.z > -38;
+    e.mesh.position.z += gunnerHolding ? worldSpeed * .04 : (e.speed * slowMul + worldSpeed * .5);
     e.mesh.position.x += Math.sin(t * 3 + e.mesh.userData.phase) * 0.015;
     animateWalk(e.mesh, t, 8, e.type === "heavy" ? .38 : .52);
+    if (e.type === "gunner" && e.mesh.position.z > -64 && e.mesh.position.z < -12) {
+      e.attackCd--;
+      if (e.attackCd <= 0) {
+        if (createEnemyAimHazard(e)) e.attackCd = rand(90, 150);
+        else e.attackCd = 18;
+      }
+    }
   }
+  updateEnemyAimHazards(t);
   updateBoss(t);
   /* 道具箱随卷轴前进 */
   for (const c of crates) {
@@ -1956,6 +2119,33 @@ function update() {
     c.mesh.scale.setScalar(s);
     c.glow.material.opacity = .15 + Math.sin(t * 4 + c.phase) * .06;
   }
+
+  /* 奖励核心随道路移动，靠近后吸附并拾取 */
+  for (const core of rewardCores) {
+    core.life--;
+    core.mesh.position.z += worldSpeed;
+    core.mesh.rotation.y += .045;
+    const pulse = 1 + Math.sin(t * 6 + core.phase) * .09;
+    core.mesh.scale.setScalar(pulse);
+    const dx = player.x - core.mesh.position.x;
+    const dz = PLAYER_Z - core.mesh.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < core.magnetRadius * core.magnetRadius) {
+      core.mesh.position.x += dx * .09;
+      core.mesh.position.z += dz * .09;
+    }
+    if (distSq < core.pickupRadius * core.pickupRadius && !core.collected) {
+      core.collected = true;
+      applyReward(core.reward, core.mesh.position.x, core.mesh.position.z);
+    }
+  }
+  rewardCores = rewardCores.filter(core => {
+    if (core.collected || core.life <= 0 || core.mesh.position.z > 10) {
+      disposeRewardCore(core);
+      return false;
+    }
+    return true;
+  });
 
   /* 子弹命中 */
   for (const b of bullets) {
@@ -1972,7 +2162,7 @@ function update() {
         drawCrateFace(c.g2d, c); c.tex.needsUpdate = true;
         addParticles(bp.x, bp.y, cp.z + 1.1, "#ffd54f", 4, 0.15);
         if (b.type === "rocket" || b.starburst) explodeProjectile(b, cp.x, cp.z);
-        if (c.count <= 0) { applyReward(c); c.collected = true; }
+        if (c.count <= 0) { spawnRewardCore(c); c.collected = true; }
         break;
       }
     }
@@ -1983,7 +2173,7 @@ function update() {
       if (Math.abs(bp.x - ep.x) < 2.35 && Math.abs(bp.z - ep.z) < 2.5) {
         if (b.type === "rocket" || b.starburst) {
           b.dead = true;
-          explodeProjectile(b, ep.x, ep.z);
+          explodeProjectile(b, ep.x, ep.z, "boss");
         } else {
           b.hitIds?.add("boss");
           b.pierce--;
@@ -2001,7 +2191,7 @@ function update() {
       if (Math.abs(bp.x - ep.x) < r && Math.abs(bp.z - ep.z) < r + 0.3) {
         if (b.type === "rocket" || b.starburst) {
           b.dead = true;
-          explodeProjectile(b, ep.x, ep.z);
+          explodeProjectile(b, ep.x, ep.z, e.id);
           break;
         }
         b.hitIds?.add(e.id);
@@ -2047,7 +2237,7 @@ function update() {
       if (dx * dx + dz * dz < 1.4) {
         e.dead = true;
         addParticles(ep.x, 1.2, ep.z, "#90caf9", 12, 0.3);
-        hurtHero(e.contactDmg, `护甲 -${e.contactDmg}`, "#ff5252", true);
+        hurtHero(e.contactDmg, "敌人撞击", "#ff5252", true, ARMOR_SHARES.standard, "contact");
         break;
       }
     }
@@ -2139,6 +2329,11 @@ const hScore = document.getElementById("hScore");
 const hArmy  = document.getElementById("hArmy");
 const hDist  = document.getElementById("hDist");
 const hPower = document.getElementById("hPower");
+const vitalsHudEl = document.getElementById("vitalsHud");
+const healthTextEl = document.getElementById("healthText");
+const healthFillEl = document.getElementById("healthFill");
+const armorTextEl = document.getElementById("armorText");
+const armorFillEl = document.getElementById("armorFill");
 const buffsEl = document.getElementById("buffs");
 const statusToggle = document.getElementById("statusToggle");
 const statsPanel = document.getElementById("statsPanel");
@@ -2189,11 +2384,11 @@ function triggerAirstrike(level) {
     const p = target.mesh.position;
     addImpactRing(p.x, .08, p.z, 0xff9b48, 2.6 + level * .4);
     addParticles(p.x, 1, p.z, "#ff9b48", mobileDevice ? 16 : 26, .42);
-    target.hp -= Math.max(8, totalPower() * .12 * level);
+    target.hp -= standardProjectileDamage() * (2 + level * 1.25);
     drawHpLabel(target);
     if (target.hp <= 0 && !target.dead) killEnemy(target);
   }
-  if (boss) damageBoss(Math.max(20, totalPower() * .08 * level), boss.mesh.position.x, boss.mesh.position.z);
+  if (boss) damageBoss(standardProjectileDamage() * (1.5 + level), boss.mesh.position.x, boss.mesh.position.z);
   airstrikeResolving = false;
 }
 
@@ -2261,7 +2456,7 @@ function updateDrones(t) {
     mesh.scale.set(.65, .65, 1.4);
     mesh.position.copy(drone.position); mesh.position.z -= .35;
     scene.add(mesh);
-    bullets.push({ mesh, weaponId: "laser", type: "drone", vx, dmg: Math.max(1, totalPower() * .03), px: mesh.position.x, pz: mesh.position.z, speed: 1.55, pierce: 1, radius: 0, starburst: false, hitIds: new Set() });
+    bullets.push({ mesh, weaponId: "laser", type: "drone", vx, dmg: Math.max(.5, standardProjectileDamage() * .35), px: mesh.position.x, pz: mesh.position.z, speed: 1.55, pierce: 1, radius: 0, starburst: false, hitIds: new Set() });
   });
 }
 
@@ -2353,14 +2548,20 @@ function updateHUD() {
   setHudText(hDist, Math.floor(distance) + " m");
   setHudText(hArmy, `${rankName(player.level)} ${player.level}/${MAX_RANK} · ${player.xp}/${nextXp} ${player.level >= MAX_RANK ? "功勋" : "XP"}`, true);
   setHudText(hPower, "战力 " + Math.round(totalPower()), true);
+  if (hero) {
+    healthTextEl.textContent = `生命 ${Math.ceil(hero.health)}/${hero.maxHealth}`;
+    armorTextEl.textContent = `护甲 ${Math.ceil(hero.armor)}/${hero.maxArmor}`;
+    healthFillEl.style.transform = `scaleX(${clamp(hero.health / hero.maxHealth, 0, 1)})`;
+    armorFillEl.style.transform = `scaleX(${clamp(hero.armor / hero.maxArmor, 0, 1)})`;
+  }
   let b = `<span style="color:${weapon.css}">${weapon.label} · 武器阶段 ${weaponStageForRank(player.level)}/6</span>`;
-  if (hero) b += `<span style="color:#b8f58b">护甲 ${Math.max(0, hero.armor)}/${hero.maxArmor}</span>`;
+  if (hero) b += `<span style="color:#ff8295">生命 ${Math.ceil(hero.health)}/${hero.maxHealth}</span>`;
   if (combo >= 2)         b += `<span style="color:#ff5722">连杀 ×${combo}</span>`;
   if (critT > 0)          b += `<span style="color:#ffb300">暴击模式 ${Math.ceil(critT / 60)}s</span>`;
   if (player.shield > 0)  b += `<span style="color:#4dd0e1">🛡 护盾 ×${player.shield}</span>`;
   if (player.spreadT > 0) b += `<span style="color:#ba68c8">散弹 ${Math.ceil(player.spreadT / 60)}s</span>`;
   if (player.slowT > 0)   b += `<span style="color:#fff176">减缓 ${Math.ceil(player.slowT / 60)}s</span>`;
-  if (player.damageBonus > 0) b += `<span style="color:#ff8a65">火力 +${player.damageBonus}</span>`;
+  if (player.damageBonus > 0) b += `<span style="color:#ff8a65">火力 +${Math.round(player.damageBonus * 100)}%</span>`;
   b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;
   if (saveData.medals > 0) b += `<span style="color:#ffd86b">司令勋章 ×${saveData.medals}</span>`;
   buffsEl.innerHTML = b;
@@ -2377,9 +2578,10 @@ function renderStatsPanel() {
   rows.push(["军衔", `${rankName(player.level)} · ${player.level} / ${MAX_RANK}`]);
   rows.push(["当前武器", weapon.label]);
   rows.push([player.level >= MAX_RANK ? "司令功勋" : "经验", `${player.xp} / ${nextXp}`]);
-  rows.push(["攻击加成", `+${player.damageBonus}`]);
+  rows.push(["攻击加成", `+${Math.round(player.damageBonus * 100)}%`]);
   rows.push(["射击", `${inheritedShotDirections().length}弹 / ${(60 / effectiveFireInterval()).toFixed(1)}轮每秒`]);
   rows.push(["护盾", player.shield]);
+  rows.push(["主角生命", hero ? `${Math.ceil(hero.health)} / ${hero.maxHealth}` : "0 / 0"]);
   rows.push(["主角护甲", hero ? `${Math.max(0, hero.armor)} / ${hero.maxArmor}` : "0 / 0"]);
   if (player.spreadT > 0) rows.push(["散弹增益", `${Math.ceil(player.spreadT / 60)}秒`]);
   if (player.slowT > 0) rows.push(["时间减缓", `${Math.ceil(player.slowT / 60)}秒`]);
@@ -2448,6 +2650,10 @@ function clearWorld() {
   impactFx = [];
   enemies.forEach(removeEnemy);
   crates.forEach(disposeCrate);
+  rewardCores.forEach(disposeRewardCore);
+  rewardCores = [];
+  enemyAimHazards.forEach(disposeEnemyAimHazard);
+  enemyAimHazards = [];
   gates.forEach(disposeGate);
   gates = [];
   traps.forEach(disposeTrap);
@@ -2460,7 +2666,7 @@ function clearWorld() {
   bossProjectiles = [];
   bossBarEl.classList.add("hidden");
   floatTexts.forEach(ft => { scene.remove(ft.sprite); ft.sprite.material.map.dispose(); ft.sprite.material.dispose(); });
-  bullets = []; enemies = []; crates = []; particles = []; floatTexts = []; trailFx = [];
+  bullets = []; enemies = []; crates = []; rewardCores = []; enemyAimHazards = []; particles = []; floatTexts = []; trailFx = [];
 }
 
 function startGame() {
@@ -2489,6 +2695,7 @@ function startGame() {
   choicePanelEl.classList.add("hidden");
   prestigePanelEl.classList.add("hidden");
   hud.classList.remove("hidden");
+  vitalsHudEl.classList.remove("hidden");
   statusToggle.classList.remove("hidden");
   rankBadgeEl.classList.remove("hidden");
   statsPanel.classList.add("hidden"); uiPaused = false;
@@ -2518,6 +2725,7 @@ function endGame() {
   renderProgressText();
   bossBarEl.classList.add("hidden");
   hud.classList.add("hidden");
+  vitalsHudEl.classList.add("hidden");
   statusToggle.classList.add("hidden");
   rankBadgeEl.classList.add("hidden");
   choicePanelEl.classList.add("hidden");
