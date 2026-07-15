@@ -1,8 +1,13 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const BUILD_TAG = new Date().toISOString().slice(0, 16).replace("T", " ");
+
 export default defineConfig({
   base: "./",
+  define: {
+    __BUILD_TIME__: JSON.stringify(BUILD_TAG),
+  },
   build: {
     target: "es2022",
     sourcemap: true,

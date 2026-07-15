@@ -16,7 +16,9 @@
   #vignette, #screenFlash, #speedFx { position: fixed; inset: 0; pointer-events: none; }
   #vignette {
     z-index: 2;
-    background: radial-gradient(circle at 50% 44%, transparent 44%, rgba(25,48,82,.08) 74%, rgba(15,28,52,.24) 115%);
+    background:
+      radial-gradient(circle at 50% 42%, transparent 40%, rgba(20,42,74,.12) 72%, rgba(10,22,44,.34) 116%),
+      radial-gradient(circle at 50% 8%, rgba(150,200,255,.10), transparent 40%);
   }
   #screenFlash { z-index: 8; opacity: 0; mix-blend-mode: screen; }
   #speedFx {
@@ -152,6 +154,7 @@
     line-height: 1.65; animation: resultPop .38s ease-out;
   }
   .install-tip { display: none; margin-top: 12px; font-size: 12px !important; color: #9fb3cc !important; }
+  .build-tag { margin-top: 14px; font-size: 11px !important; color: rgba(150,172,198,.6) !important; letter-spacing: .5px; }
   .progress-text { margin-top: 10px; color:#b9d8f2 !important; font-size:12px !important; }
   #controlHint {
     position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
@@ -211,8 +214,8 @@
   <span class="kills" id="hPower">战力 0</span>
 </div>
 <div id="vitalsHud" class="hidden">
-  <div class="vital-row"><span id="healthText">生命 100/100</span><div class="vital-track"><div id="healthFill" class="health-fill"></div></div></div>
-  <div class="vital-row"><span id="armorText">护甲 32/32</span><div class="vital-track"><div id="armorFill" class="armor-fill"></div></div></div>
+  <div class="vital-row"><span id="healthText">生命 100/100</span><div class="vital-track"><div id="healthLag" class="health-lag"></div><div id="healthFill" class="health-fill"></div></div></div>
+  <div class="vital-row"><span id="armorText">护甲 32/32</span><div class="vital-track"><div id="armorLag" class="armor-lag"></div><div id="armorFill" class="armor-fill"></div></div></div>
 </div>
 <div id="buffs"></div>
 <button id="statusToggle" class="hidden">状态</button>
@@ -251,6 +254,7 @@
   <button id="startBtn">开始游戏</button>
   <button id="installBtn" class="secondary hidden">安装到手机桌面</button>
   <p id="installTip" class="install-tip">手机浏览器打开后，可从浏览器菜单选择“添加到主屏幕”</p>
+  <p id="buildTag" class="build-tag"></p>
  </div>
 </div>
 

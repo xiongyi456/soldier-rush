@@ -16,10 +16,10 @@ interface WeatherPreset {
 }
 
 const PRESETS: readonly WeatherPreset[] = [
-  { id: "overcast", sky: new THREE.Color(0x718ca2), fog: new THREE.Color(0x91a8b5), fogNear: 46, fogFar: 116, exposure: .78, hemi: .82, sun: .7, fill: .34, rain: 0 },
-  { id: "rain", sky: new THREE.Color(0x42566b), fog: new THREE.Color(0x667987), fogNear: 38, fogFar: 94, exposure: .7, hemi: .68, sun: .42, fill: .28, rain: 1 },
-  { id: "mist", sky: new THREE.Color(0x84949b), fog: new THREE.Color(0xaeb9b9), fogNear: 24, fogFar: 72, exposure: .74, hemi: .76, sun: .52, fill: .32, rain: .08 },
-  { id: "dusk", sky: new THREE.Color(0x564f70), fog: new THREE.Color(0x806f78), fogNear: 42, fogFar: 106, exposure: .72, hemi: .7, sun: .62, fill: .42, rain: 0 },
+  { id: "overcast", sky: new THREE.Color(0x7b9cb8), fog: new THREE.Color(0x9db4c2), fogNear: 46, fogFar: 116, exposure: .9, hemi: .88, sun: .78, fill: .36, rain: 0 },
+  { id: "rain", sky: new THREE.Color(0x4a6076), fog: new THREE.Color(0x6e8294), fogNear: 38, fogFar: 94, exposure: .8, hemi: .72, sun: .46, fill: .3, rain: 1 },
+  { id: "mist", sky: new THREE.Color(0x8fa2ab), fog: new THREE.Color(0xb7c2c4), fogNear: 24, fogFar: 72, exposure: .85, hemi: .8, sun: .56, fill: .34, rain: .08 },
+  { id: "dusk", sky: new THREE.Color(0x655c85), fog: new THREE.Color(0x8d7a85), fogNear: 42, fogFar: 106, exposure: .83, hemi: .74, sun: .7, fill: .46, rain: 0 },
 ] as const;
 
 export class WeatherController {

@@ -84,10 +84,14 @@ body {
 }
 
 .vital-row { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 6px; }
-.vital-track { height: 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.42); border-radius: 999px; background: rgba(7,14,25,.72); }
-.vital-track > div { width: 100%; height: 100%; transform-origin: left; transition: transform .16s ease; }
-.health-fill { background: linear-gradient(90deg, #ef334f, #ff7588); }
-.armor-fill { background: linear-gradient(90deg, #398de5, #76dcff); }
+.vital-track { position: relative; height: 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.42); border-radius: 999px; background: rgba(7,14,25,.72); }
+.vital-track > div { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: left; }
+.health-fill { background: linear-gradient(90deg, #ef334f, #ff7588); transition: transform .12s ease; }
+.armor-fill { background: linear-gradient(90deg, #398de5, #76dcff); transition: transform .12s ease; }
+.health-lag { background: linear-gradient(90deg, #ffd7c2, #fff0c0); opacity: .5; transition: transform .18s ease; }
+.armor-lag { background: linear-gradient(90deg, #bfe6ff, #eaf7ff); opacity: .45; transition: transform .18s ease; }
+@keyframes vitalHitFlash { 0% { filter: brightness(3) saturate(1.5); } 100% { filter: brightness(1); } }
+.vital-hit { animation: vitalHitFlash .34s ease-out; }
 
 #choicePanel,
 #prestigePanel {
