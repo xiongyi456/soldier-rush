@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-19";
+const BUILD_VERSION = "mg-road-20";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -4207,7 +4207,7 @@ function clearWorld() {
   bossHazards = [];
   bossProjectiles.forEach(disposeBossProjectile);
   bossProjectiles = [];
-  bossBarEl.classList.add("hidden");
+  bossBarEl?.classList.add("hidden");
   floatTexts.forEach(releaseFloatText);
   sparks.forEach(s => sparkSpritePool.release(s.mesh));
   smokes.forEach(s => smokeSpritePool.release(s.mesh));
@@ -4299,11 +4299,11 @@ function requestStartGame() {
     if (!running) startGame();
   } catch (error) {
     console.error("requestStartGame failed", error);
+    try {
+      alert("开始失败: " + (error?.message || error));
+    } catch { /* ignore */ }
   }
 }
-// 尽早挂上，main 一 load 完就能点开始（不必等 demo/loop 之后）
-(globalThis as any).__soldierRushStart = requestStartGame;
-(globalThis as any).__soldierRushReady = true;
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
@@ -4380,3 +4380,31 @@ try {
 } catch {
   // ignore
 }
+
+// 全部初始化完成后再挂开始入口，避免点太早踩到未创建的 demoSoldier
+(globalThis as any).__soldierRushStart = requestStartGame;
+(globalThis as any).__soldierRushReady = true;
+try {
+  const btn = document.getElementById("startBtn");
+  if (btn) {
+    const go = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      const ls = document.getElementById("loadingScreen");
+      if (ls) {
+        ls.classList.add("done");
+        ls.style.display = "none";
+        ls.style.pointerEvents = "none";
+      }
+      requestStartGame();
+    };
+    btn.onclick = go;
+    btn.addEventListener("click", go);
+    btn.addEventListener("touchend", go, { passive: false });
+    btn.disabled = false;
+    btn.removeAttribute("disabled");
+    btn.textContent = "开始游戏";
+  }
+  const loadStatus = document.getElementById("loadStatus");
+  if (loadStatus) loadStatus.textContent = "加载完成，点击开始";
+} catch { /* ignore */ }

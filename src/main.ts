@@ -40,7 +40,11 @@ function setStatus(text: string): void {
 }
 
 function hideLoadingOverlay(): void {
-  $("loadingScreen")?.classList.add("done");
+  const el = $("loadingScreen");
+  if (!el) return;
+  el.classList.add("done");
+  el.style.display = "none";
+  el.style.pointerEvents = "none";
 }
 
 function showLoadingOverlay(): void {
@@ -66,11 +70,15 @@ function wireButton(label: string, handler: () => void): void {
   button.onclick = handler;
 }
 
-function tryStartGame(): void {
+function tryStartGame(ev?: Event): void {
+  ev?.preventDefault?.();
   hideLoadingOverlay();
-  if (typeof g.__soldierRushStart === "function") {
+  setStatus("正在进入…");
+  const start = g.__soldierRushStart || (window as any).__soldierRushStart;
+  if (typeof start === "function") {
     try {
-      g.__soldierRushStart();
+      start();
+      setStatus("");
     } catch (error) {
       console.error(error);
       setStatus("开始失败，请清缓存");
@@ -86,7 +94,17 @@ function enableStartGame(): void {
   g.__soldierRushReady = true;
   hideLoadingOverlay();
   setStatus("加载完成，点击开始");
-  wireButton("开始游戏", tryStartGame);
+  const button = startButton();
+  if (!button) return;
+  button.disabled = false;
+  button.removeAttribute("disabled");
+  button.textContent = "开始游戏";
+  button.onclick = (e) => tryStartGame(e);
+  // 手机 WebView 有时 click 不触发，补 touchend
+  button.ontouchend = (e) => {
+    e.preventDefault();
+    tryStartGame(e);
+  };
 }
 
 // 不自动更新 SW，避免刷新死循环
