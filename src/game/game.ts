@@ -2038,7 +2038,11 @@ function spawnRewardCore(crate) {
   label.position.y = 1.25; group.add(label);
   group.position.set(crate.mesh.position.x, .72, crate.mesh.position.z);
   scene.add(group);
-  rewardCores.push({ mesh: group, reward: crate.reward, life: 360, phase: Math.random() * Math.PI * 2, collected: false, pickupRadius: 1.3, magnetRadius: 2.5, label });
+  // Wide magnet + generous auto-pickup so multi-crate drops never miss when player runs past.
+  rewardCores.push({
+    mesh: group, reward: crate.reward, life: 480, phase: Math.random() * Math.PI * 2,
+    collected: false, pickupRadius: 3.8, magnetRadius: 9.5, label,
+  });
 }
 
 function disposeRewardCore(core) {
@@ -3255,27 +3259,40 @@ function update() {
     c.glow.material.opacity = .15 + Math.sin(t * 4 + c.phase) * .06;
   }
 
-  /* 奖励核心随道路移动，靠近后吸附并拾取 */
+  /* 奖励核心：大范围磁吸 + 靠近自动拾取（三箱并排也能一次扫光） */
   for (const core of rewardCores) {
+    if (core.collected) continue;
     core.life--;
     core.mesh.position.z += worldSpeed;
-    core.mesh.rotation.y += .045;
+    core.mesh.rotation.y += .05;
     const pulse = 1 + Math.sin(t * 6 + core.phase) * .09;
     core.mesh.scale.setScalar(pulse);
     const dx = player.x - core.mesh.position.x;
     const dz = PLAYER_Z - core.mesh.position.z;
     const distSq = dx * dx + dz * dz;
-    if (distSq < core.magnetRadius * core.magnetRadius) {
-      core.mesh.position.x += dx * .09;
-      core.mesh.position.z += dz * .09;
-    }
-    if (distSq < core.pickupRadius * core.pickupRadius && !core.collected) {
+    const dist = Math.sqrt(distSq) || .001;
+    // Auto-collect as soon as the core is roughly near the hero lane.
+    if (dist <= core.pickupRadius) {
       core.collected = true;
       applyReward(core.reward, core.mesh.position.x, core.mesh.position.z);
+      continue;
+    }
+    if (dist <= core.magnetRadius) {
+      // Stronger pull the closer it is; multiple cores can chase the player at once.
+      const pull = Math.min(.42, .12 + (1 - dist / core.magnetRadius) * .32);
+      core.mesh.position.x += dx * pull;
+      core.mesh.position.z += dz * pull;
+      // Re-check after magnet step so same-frame multi-loot works.
+      const ndx = player.x - core.mesh.position.x;
+      const ndz = PLAYER_Z - core.mesh.position.z;
+      if (ndx * ndx + ndz * ndz <= core.pickupRadius * core.pickupRadius) {
+        core.collected = true;
+        applyReward(core.reward, core.mesh.position.x, core.mesh.position.z);
+      }
     }
   }
   compactInPlace(rewardCores, core => {
-    if (core.collected || core.life <= 0 || core.mesh.position.z > 10) {
+    if (core.collected || core.life <= 0 || core.mesh.position.z > 12) {
       disposeRewardCore(core);
       return false;
     }
