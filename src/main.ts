@@ -27,10 +27,18 @@ async function bootstrapNativeShell(): Promise<void> {
 }
 
 void bootstrapNativeShell();
-void import("./game/game.ts").catch((error: unknown) => {
+void import("./game/game.ts").then(() => {
+  (globalThis as typeof globalThis & { __soldierRushReady?: boolean }).__soldierRushReady = true;
+}).catch((error: unknown) => {
   console.error("Soldier Rush failed to boot", error);
   const loading = document.getElementById("loadingScreen");
   const card = loading?.querySelector<HTMLElement>(".loading-card");
-  if (card) card.innerHTML = "游戏资源加载失败<br><small>请刷新页面，或使用 npm run dev 启动</small>";
+  const detail = error instanceof Error ? error.message : String(error);
+  if (card) {
+    card.innerHTML =
+      "游戏资源加载失败<br><small>请强制刷新 (Ctrl+F5)，或运行 npm run dev<br>" +
+      detail.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] || c)) +
+      "</small>";
+  }
   loading?.classList.remove("done");
 });

@@ -62,7 +62,9 @@ const quality = detectQuality(
   lowPowerDevice,
   saveData.quality === "high" || saveData.quality === "medium" || saveData.quality === "low" ? saveData.quality : "auto",
 );
-const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("cv"), antialias: !lowPowerDevice, powerPreference: "high-performance" });
+const canvasEl = document.getElementById("cv") as HTMLCanvasElement | null;
+if (!canvasEl) throw new Error("缺少画布 #cv，请勿直接双击 html，请用 npm run dev 打开");
+const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: !lowPowerDevice, powerPreference: "high-performance" });
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -498,23 +500,25 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   return g;
 }
 function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
+  if (!soldier?.userData) return;
   if (soldier.userData.mixer) {
     soldier.userData.mixer.update(1 / 60);
     soldier.rotation.z += (-lean * .12 - soldier.rotation.z) * .18;
     return;
   }
-  const p = t * speed + soldier.userData.phase;
   const ud = soldier.userData;
+  if (!ud.legs || !ud.arms || !ud.gunRig || !ud.rig) return;
+  const p = t * speed + (ud.phase || 0);
   ud.legs[0].rotation.x =  Math.sin(p) * amp;
   ud.legs[1].rotation.x = -Math.sin(p) * amp;
-  ud.arms[0].rotation.x = ud.armBase - Math.sin(p) * .09 - ud.recoil * .2;
-  ud.arms[1].rotation.x = ud.armBase + Math.sin(p) * .09 - ud.recoil * .2;
-  ud.gunRig.position.z = -.55 + ud.recoil * .12;
+  ud.arms[0].rotation.x = (ud.armBase || 0) - Math.sin(p) * .09 - (ud.recoil || 0) * .2;
+  ud.arms[1].rotation.x = (ud.armBase || 0) + Math.sin(p) * .09 - (ud.recoil || 0) * .2;
+  ud.gunRig.position.z = -.55 + (ud.recoil || 0) * .12;
   ud.rig.position.y = .035 + Math.abs(Math.sin(p)) * .075;
   ud.rig.rotation.x = Math.sin(p * 2) * .018;
-  ud.rig.rotation.z = -lean * .16 + Math.sin(p * 3) * ud.hit * .08;
-  ud.recoil *= .56;
-  ud.hit *= .72;
+  ud.rig.rotation.z = -lean * .16 + Math.sin(p * 3) * (ud.hit || 0) * .08;
+  ud.recoil = (ud.recoil || 0) * .56;
+  ud.hit = (ud.hit || 0) * .72;
   // 受击闪白:emissive 随 ud.hit 衰减(命中瞬间置 1)。hero 在 hurtT 分支随后会被红色染色覆盖
   if (ud.tintMats) {
     const h = ud.hit > .05 ? Math.min(1, ud.hit) * .85 : 0;
@@ -969,6 +973,7 @@ function applyRankInsignia(mesh, rank) {
 }
 function flashScreen(color = "#ffffff", strength = .35) {
   screenFlashT = Math.max(screenFlashT, strength * 12);
+  if (!screenFlashEl) return;
   screenFlashEl.style.background = color;
   screenFlashEl.style.opacity = String(Math.min(.42, screenFlashT / 12));
 }
@@ -1007,7 +1012,7 @@ function pointerX(e) {
   const nx = clamp((e.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
   return (nx - 0.5) * 2 * (ROAD_HALF + 1);
 }
-const cvEl = document.getElementById("cv");
+const cvEl = canvasEl;
 let activePointerId = null;
 cvEl.addEventListener("pointerdown", e => {
   if (!running || (activePointerId !== null && activePointerId !== e.pointerId)) return;
@@ -3587,9 +3592,9 @@ function performPrestige() {
   flashScreen("#ffd86b", .6);
 }
 
-prestigeNowEl.addEventListener("click", performPrestige);
-prestigeLaterEl.addEventListener("click", () => {
-  prestigePanelEl.classList.add("hidden");
+prestigeNowEl?.addEventListener("click", performPrestige);
+prestigeLaterEl?.addEventListener("click", () => {
+  prestigePanelEl?.classList.add("hidden");
   uiPaused = false;
   lastLoopTime = performance.now();
   accumulator = 0;
@@ -3694,12 +3699,12 @@ function renderStatsPanel() {
     openPrestigePanel();
   });
 }
-statusToggle.addEventListener("click", () => {
+statusToggle?.addEventListener("click", () => {
   if (!running) return;
-  clearInputState(); renderStatsPanel(); uiPaused = true; accumulator = 0; statsPanel.classList.remove("hidden");
+  clearInputState(); renderStatsPanel(); uiPaused = true; accumulator = 0; statsPanel?.classList.remove("hidden");
 });
-statsClose.addEventListener("click", () => {
-  statsPanel.classList.add("hidden"); uiPaused = false; lastLoopTime = performance.now(); accumulator = 0;
+statsClose?.addEventListener("click", () => {
+  statsPanel?.classList.add("hidden"); uiPaused = false; lastLoopTime = performance.now(); accumulator = 0;
 });
 
 /* ================= 开始 / 结束 ================= */
@@ -3714,29 +3719,30 @@ const controlHint = document.getElementById("controlHint");
 const controlText = document.getElementById("controlText");
 
 function renderProgressText() {
+  if (!progressText) return;
   const weapons = saveData.unlockedWeapons.map(id => WEAPON_DEFS[id]?.label).filter(Boolean).join(" · ");
   progressText.textContent = `已解锁：${weapons}　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
 }
 renderProgressText();
 
-if (mobileDevice) controlText.textContent = "按住屏幕左右滑动来移动主角";
+if (mobileDevice && controlText) controlText.textContent = "按住屏幕左右滑动来移动主角";
 
 let installPrompt = null;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault();
   installPrompt = e;
-  installBtn.classList.remove("hidden");
+  installBtn?.classList.remove("hidden");
 });
-installBtn.addEventListener("click", async () => {
+installBtn?.addEventListener("click", async () => {
   if (!installPrompt) return;
   installPrompt.prompt();
   await installPrompt.userChoice;
   installPrompt = null;
-  installBtn.classList.add("hidden");
+  installBtn?.classList.add("hidden");
 });
 window.addEventListener("appinstalled", () => {
-  installBtn.classList.add("hidden");
-  installTip.classList.add("hidden");
+  installBtn?.classList.add("hidden");
+  installTip?.classList.add("hidden");
 });
 
 function releaseTrailFx(s) {
@@ -3851,9 +3857,9 @@ function endGame() {
   overlay.classList.add("game-over");
   overlay.classList.remove("hidden");
 }
-startBtn.addEventListener("click", () => { if (!running) startGame(); });
+startBtn?.addEventListener("click", () => { if (!running) startGame(); });
 (globalThis as any).__soldierRushReady = true;
-startBtn.textContent = "开始游戏";
+if (startBtn) startBtn.textContent = "开始游戏";
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
