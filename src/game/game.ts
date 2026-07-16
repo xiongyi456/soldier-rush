@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-12";
+const BUILD_VERSION = "mg-road-13";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -1359,14 +1359,15 @@ function retuneLivingEnemies() {
 }
 
 function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
-  // 前中期稍压；打完公路五害后加速冲司令，好开终焉王
+  // 5 级后强压击杀经验，避免中期连升；打完五害后略放开，方便冲司令开终焉
   const rankDamp =
     player.level <= 2 ? 1 :
-    player.level <= 4 ? .78 :
-    player.level <= 7 ? .7 :
-    player.level <= 10 ? (bossCount >= 5 ? .95 : .62) :
-    (bossCount >= 5 ? 1.05 : .55);
-  const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .12) * rankDamp;
+    player.level <= 4 ? .7 :
+    player.level <= 6 ? (bossCount >= 5 ? .75 : .42) :
+    player.level <= 9 ? (bossCount >= 5 ? .7 : .32) :
+    player.level <= 11 ? (bossCount >= 5 ? .65 : .26) :
+    (bossCount >= 5 ? .6 : .22);
+  const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .1) * rankDamp;
   const gained = Math.max(1, Math.round(amount * xpMul));
   if (player.prestigeReady) {
     player.xp = COMMANDER_MERIT;
@@ -1533,14 +1534,14 @@ function shatterEnemy(e) {
 }
 
 function killXpForEnemy(e) {
-  // 基础 XP；3 级后由 grantHeroXp 的 rankDamp 再压一层
+  // 基础 XP 再降一档；5 级后主要靠 rankDamp 控节奏
   const base =
-    e.type === "fodder" ? 3 :
-    e.type === "gunner" ? 6 :
-    e.type === "shield" ? 5 :
-    e.type === "heavy" ? 9 :
-    4;
-  return e.elite ? base + 6 : base;
+    e.type === "fodder" ? 2 :
+    e.type === "gunner" ? 4 :
+    e.type === "shield" ? 4 :
+    e.type === "heavy" ? 6 :
+    3;
+  return e.elite ? base + 4 : base;
 }
 
 /** 击杀小概率掉小技能：自动 +1 级，不弹三选一面板 */
@@ -2628,11 +2629,14 @@ function defeatBoss() {
   player.fireRateMul = Math.max(.42, player.fireRateMul * .88);
   player.damageBonus = Math.min(.8, player.damageBonus + .06);
   retuneLivingEnemies();
-  const bossXp = 55 + defeated.number * 20;
+  const bossXp = 45 + defeated.number * 18;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
-  // 打完公路五害(第5)：大额经验冲刺司令，好开终焉王
+  // 打完公路五害(第5)：一次性大额经验冲刺司令，好开终焉王（绕过日常 damp）
   if (!endlessMode && defeated.number === 5 && player.level < MAX_RANK) {
-    grantHeroXp(280 + (MAX_RANK - player.level) * 40, player.x, PLAYER_Z - 4);
+    const catchUp = Math.max(200, (MAX_RANK - player.level) * 180);
+    player.xp += catchUp;
+    addFloatText(player.x, 4.0, PLAYER_Z - 3.5, `经验 +${catchUp}`, "#b8f58b", 5.2);
+    processRankProgress();
     addFloatText(0, 5.8, -12, "五害已灭 · 冲刺司令开终焉!", "#ffd86b", 6.4);
   }
   if (defeated.def.theme === "final") {
