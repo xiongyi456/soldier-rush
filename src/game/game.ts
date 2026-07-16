@@ -282,32 +282,34 @@ for (let i = 0; i < 16; i++) {
   trees.push(t);
 }
 
-/* ================= 3D 士兵模型 (皮克斯风 Q 版) ================= */
+/* ================= 3D 士兵模型 (精致动画电影风) ================= */
+/* 约 4 头高：头更小、躯干更挺、腿更长，脸精致但不幼龄 */
 const soldierGeo = {
-  torso: new THREE.SphereGeometry(0.42, 18, 14),
-  belly: new THREE.SphereGeometry(0.36, 16, 12),
-  limb: new THREE.CapsuleGeometry(0.14, 0.22, 6, 10),
-  head: new THREE.SphereGeometry(0.48, 22, 16),
-  helmet: new THREE.SphereGeometry(0.5, 20, 14, 0, Math.PI * 2, 0, Math.PI * .58),
-  hand: new THREE.SphereGeometry(0.16, 12, 10),
-  boot: new THREE.SphereGeometry(0.18, 12, 10),
-  cheek: new THREE.SphereGeometry(0.12, 12, 10),
-  nose: new THREE.SphereGeometry(0.08, 10, 8),
-  eye: new THREE.SphereGeometry(0.12, 14, 12),
-  pupil: new THREE.SphereGeometry(0.07, 12, 10),
-  shine: new THREE.SphereGeometry(0.03, 8, 6),
-  brow: new THREE.CapsuleGeometry(0.02, 0.12, 3, 6),
-  gunBody: new THREE.CapsuleGeometry(0.09, 0.42, 5, 8),
-  gunTip: new THREE.CapsuleGeometry(0.05, 0.18, 4, 8),
+  torso: new THREE.CapsuleGeometry(0.34, 0.38, 8, 14),
+  belly: new THREE.SphereGeometry(0.32, 16, 12),
+  limb: new THREE.CapsuleGeometry(0.11, 0.34, 6, 10),
+  head: new THREE.SphereGeometry(0.36, 24, 18),
+  helmet: new THREE.SphereGeometry(0.38, 20, 14, 0, Math.PI * 2, 0, Math.PI * .56),
+  hand: new THREE.SphereGeometry(0.12, 12, 10),
+  boot: new THREE.CapsuleGeometry(0.12, 0.1, 5, 10),
+  cheek: new THREE.SphereGeometry(0.08, 12, 10),
+  nose: new THREE.SphereGeometry(0.05, 10, 8),
+  eye: new THREE.SphereGeometry(0.075, 14, 12),
+  pupil: new THREE.SphereGeometry(0.042, 12, 10),
+  shine: new THREE.SphereGeometry(0.018, 8, 6),
+  brow: new THREE.CapsuleGeometry(0.015, 0.1, 3, 6),
+  neck: new THREE.CapsuleGeometry(0.1, 0.08, 4, 8),
+  gunBody: new THREE.CapsuleGeometry(0.07, 0.48, 5, 8),
+  gunTip: new THREE.CapsuleGeometry(0.04, 0.2, 4, 8),
   cube: new THREE.BoxGeometry(1, 1, 1),
-  shadow: new THREE.CircleGeometry(0.72, 22),
+  shadow: new THREE.CircleGeometry(0.58, 22),
 };
 const sharedSoldierGeometries = new Set(Object.values(soldierGeo));
-const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x1a3048, transparent: true, opacity: 0.18, depthWrite: false });
+const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x1a3048, transparent: true, opacity: 0.16, depthWrite: false });
 
-/* 软卡通 5 阶 ramp：暖阴影 → 柔和中间调 → 奶油高光 */
+/* 冷暖平衡 5 阶 ramp：电影感阴影 + 干净高光 */
 function makeToonRamp() {
-  const steps = [0x4a3d52, 0x7a6a78, 0xb8a89a, 0xe8d8c8, 0xfff8f0];
+  const steps = [0x3a4558, 0x667288, 0xa8b2c0, 0xdde3ea, 0xffffff];
   const data = new Uint8Array(steps.length * 4);
   for (let i = 0; i < steps.length; i++) {
     const c = new THREE.Color(steps[i]);
@@ -330,8 +332,8 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   g.add(rig);
   const weapon = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
   const mat = (c) => new THREE.MeshToonMaterial({ color: c, gradientMap: TOON_RAMP });
-  const dark = new THREE.Color(mainColor).multiplyScalar(0.62).getHex();
-  const mid = new THREE.Color(mainColor).lerp(new THREE.Color(0xffffff), .12).getHex();
+  const dark = new THREE.Color(mainColor).multiplyScalar(0.58).getHex();
+  const mid = new THREE.Color(mainColor).lerp(new THREE.Color(0xffffff), .1).getHex();
 
   function part(geo, material, x, y, z, sx = 1, sy = 1, sz = 1, parent = rig) {
     const m = new THREE.Mesh(geo, material);
@@ -343,149 +345,131 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   const uniformMat = mat(mainColor);
   const midMat = mat(mid);
   const darkMat = mat(dark);
-  const skinMat = mat(0xffd2b0);
-  const blushMat = mat(0xff9a8a);
-  const trouserMat = mat(0x2a3d52);
-  const bootMat = mat(0x243240);
-  const gunMat = mat(0x2c3848);
+  const skinMat = mat(0xf0c2a0);
+  const blushMat = mat(0xf0a090);
+  const trouserMat = mat(0x243648);
+  const bootMat = mat(0x1c2836);
+  const gunMat = mat(0x2a3440);
   const accentMat = mat(weapon.color);
   const glowMat = new THREE.MeshBasicMaterial({ color: weapon.color, toneMapped: false });
-  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x1a2438), .55).getHex());
-  const whiteMat = mat(0xfffaf4);
-  const irisMat = mat(0x2a4060);
+  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x141c2a), .6).getHex());
+  const whiteMat = mat(0xfff8f2);
+  const irisMat = mat(0x243850);
 
   const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
-  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .015; shadow.scale.set(1.05, .7, 1);
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .015; shadow.scale.set(1, .65, 1);
   g.add(shadow);
 
-  /* 腿：短粗圆润，大战靴 */
+  /* 腿：更长、更挺，靴形清晰 */
   const legL = new THREE.Group(), legR = new THREE.Group();
-  legL.position.set(-.2, .52, 0); legR.position.set(.2, .52, 0);
+  legL.position.set(-.16, .62, 0); legR.position.set(.16, .62, 0);
   rig.add(legL, legR);
-  part(soldierGeo.limb, trouserMat, 0, -.18, 0, 1.15, .95, 1.15, legL);
-  part(soldierGeo.limb, trouserMat, 0, -.18, 0, 1.15, .95, 1.15, legR);
-  part(soldierGeo.boot, bootMat, 0, -.48, -.06, 1.35, .85, 1.55, legL);
-  part(soldierGeo.boot, bootMat, 0, -.48, -.06, 1.35, .85, 1.55, legR);
-  part(soldierGeo.boot, darkMat, 0, -.5, -.16, .9, .55, .7, legL);
-  part(soldierGeo.boot, darkMat, 0, -.5, -.16, .9, .55, .7, legR);
+  part(soldierGeo.limb, trouserMat, 0, -.22, 0, 1.05, 1.12, 1.05, legL);
+  part(soldierGeo.limb, trouserMat, 0, -.22, 0, 1.05, 1.12, 1.05, legR);
+  const bootL = part(soldierGeo.boot, bootMat, 0, -.52, -.08, 1.2, .95, 1.55, legL);
+  const bootR = part(soldierGeo.boot, bootMat, 0, -.52, -.08, 1.2, .95, 1.55, legR);
+  bootL.rotation.x = bootR.rotation.x = Math.PI / 2;
 
-  /* 躯干：梨形软身体 + 圆肩 */
-  part(soldierGeo.belly, midMat, 0, .72, .04, 1.15, .95, 1.05);
-  part(soldierGeo.torso, uniformMat, 0, 1.05, 0, 1.18, 1.05, .95);
-  part(soldierGeo.torso, darkMat, 0, 1.02, -.28, .55, .55, .22);
+  /* 躯干：倒三角运动型，不是圆球肚子 */
+  part(soldierGeo.belly, midMat, 0, .82, .02, 1.05, .75, .95);
+  part(soldierGeo.torso, uniformMat, 0, 1.12, 0, 1.15, 1.05, .92);
+  part(soldierGeo.cube, darkMat, 0, 1.18, -.28, .48, .42, .1);
   if (!lowPowerDevice) {
-    part(soldierGeo.limb, darkMat, 0, .78, .02, 1.9, .28, 1.1);
-    part(soldierGeo.hand, accentMat, 0, 1.08, -.32, .45, .45, .2);
+    part(soldierGeo.cube, darkMat, 0, .88, 0, .62, .1, .38);
+    part(soldierGeo.hand, accentMat, 0, 1.2, -.3, .38, .38, .16);
   }
   for (const side of [-1, 1]) {
-    part(soldierGeo.hand, uniformMat, side * .42, 1.22, .02, 1.05, .85, 1.0);
+    part(soldierGeo.hand, uniformMat, side * .36, 1.38, 0, .95, .75, .9);
   }
+  part(soldierGeo.neck, skinMat, 0, 1.48, 0, 1, 1, 1);
 
-  /* 头：大圆头 + 柔和头盔/发型 */
-  const head = part(soldierGeo.head, skinMat, 0, 1.72, -.02, 1.18, 1.12, 1.08);
-  part(soldierGeo.helmet, hairMat, 0, 1.9, .04, 1.22, 1.0, 1.15);
-  part(soldierGeo.cheek, hairMat, -.28, 1.95, .08, .9, .7, .85);
-  part(soldierGeo.cheek, hairMat, .28, 1.95, .08, .9, .7, .85);
-  part(soldierGeo.cheek, hairMat, 0, 2.02, .12, 1.1, .55, .75);
-  part(soldierGeo.limb, hairMat, 0, 1.78, -.38, 2.2, .22, .55);
-  part(soldierGeo.hand, accentMat, 0, 1.86, -.4, .55, .35, .2);
+  /* 头：更小更精致 + 军帽轮廓 */
+  const head = part(soldierGeo.head, skinMat, 0, 1.82, -.02, 1.05, 1.02, 1.0);
+  part(soldierGeo.helmet, hairMat, 0, 1.96, .02, 1.1, .95, 1.08);
+  part(soldierGeo.cheek, hairMat, 0, 2.02, .06, 1.15, .5, .8);
+  part(soldierGeo.cube, darkMat, 0, 1.78, -.28, .62, .06, .28);
+  part(soldierGeo.hand, accentMat, 0, 1.92, -.3, .42, .28, .14);
 
   let face = null;
   if (!lowPowerDevice || tier >= 2) {
     for (const side of [-1, 1]) {
-      part(soldierGeo.eye, whiteMat, side * .18, 1.74, -.42, 1.15, 1.35, .7);
-      part(soldierGeo.pupil, irisMat, side * .18, 1.73, -.5, 1.0, 1.15, .55);
-      part(soldierGeo.shine, whiteMat, side * .15, 1.78, -.54, 1.2, 1.2, 1);
-      part(soldierGeo.shine, whiteMat, side * .22, 1.7, -.53, .7, .7, .7);
-      const brow = part(soldierGeo.brow, hairMat, side * .18, 1.9, -.46, 1.4, 1, 1);
-      brow.rotation.z = side * -.22;
-      brow.rotation.x = .15;
-      part(soldierGeo.cheek, blushMat, side * .32, 1.62, -.32, .7, .45, .4);
+      part(soldierGeo.eye, whiteMat, side * .12, 1.84, -.32, 1.05, 1.2, .65);
+      part(soldierGeo.pupil, irisMat, side * .12, 1.835, -.38, 1.0, 1.1, .55);
+      part(soldierGeo.shine, whiteMat, side * .1, 1.86, -.4, 1.15, 1.15, 1);
+      const brow = part(soldierGeo.brow, hairMat, side * .12, 1.94, -.34, 1.15, 1, 1);
+      brow.rotation.z = side * -.18;
+      part(soldierGeo.cheek, blushMat, side * .22, 1.76, -.24, .55, .35, .3);
     }
-    part(soldierGeo.nose, skinMat, 0, 1.64, -.5, .85, .95, .95);
-    face = part(new THREE.TorusGeometry(.1, .018, 6, 14, Math.PI * .9), hairMat, 0, 1.52, -.46, 1.05, .7, 1);
+    part(soldierGeo.nose, skinMat, 0, 1.78, -.38, .75, .85, .85);
+    face = part(new THREE.TorusGeometry(.065, .012, 5, 12, Math.PI * .75), hairMat, 0, 1.7, -.35, 1, .6, 1);
     face.rotation.z = Math.PI;
     for (const side of [-1, 1]) {
-      part(soldierGeo.cheek, skinMat, side * .46, 1.7, -.02, .85, 1.05, .7);
+      part(soldierGeo.cheek, skinMat, side * .34, 1.82, 0, .7, .9, .55);
     }
   }
 
-  /* 军衔阶段装饰：圆润徽章而非硬角 */
+  /* 军衔阶段：干净徽章，少堆叠 */
   if (tier >= 2) {
     for (const side of [-1, 1]) {
-      part(soldierGeo.hand, accentMat, side * .48, 1.28, 0, 1.1, .9, 1.0);
-      part(soldierGeo.shine, glowMat, side * .48, 1.32, -.12, 1.4, 1.4, 1.4);
+      part(soldierGeo.hand, accentMat, side * .4, 1.4, -.02, .85, .7, .85);
     }
-    part(soldierGeo.hand, glowMat, 0, 1.12, -.36, .5, .5, .25);
+    part(soldierGeo.hand, glowMat, 0, 1.22, -.32, .35, .35, .18);
   }
   if (tier >= 3) {
-    part(soldierGeo.hand, accentMat, 0, 2.12, .02, .7, .55, .7);
-    part(soldierGeo.torso, darkMat, 0, 1.0, .32, .75, .7, .25);
-    for (const side of [-1, 1]) {
-      const fin = part(soldierGeo.hand, glowMat, side * .4, 1.0, .3, .55, .9, .35);
-      fin.scale.y = 1.2;
-    }
+    part(soldierGeo.hand, accentMat, 0, 2.12, 0, .55, .4, .55);
+    part(soldierGeo.cube, darkMat, 0, 1.1, .3, .55, .65, .08);
   }
   if (tier >= 4) {
-    const aura = new THREE.Mesh(new THREE.RingGeometry(.55, .78, 28), new THREE.MeshBasicMaterial({
-      color: weapon.color, transparent: true, opacity: .22, side: THREE.DoubleSide,
+    const aura = new THREE.Mesh(new THREE.RingGeometry(.48, .66, 28), new THREE.MeshBasicMaterial({
+      color: weapon.color, transparent: true, opacity: .18, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
     }));
     aura.rotation.x = -Math.PI / 2; aura.position.y = .03; g.add(aura); g.userData.aura = aura;
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(.42, .04, 8, 24), glowMat);
-    halo.position.set(0, 2.2, .02); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
-    for (const side of [-1, 1]) {
-      const wing = part(soldierGeo.hand, accentMat, side * .72, 1.2, .18, .55, 1.15, .35);
-      wing.scale.set(.5, 1.3, .4);
-      wing.rotation.z = side * .55;
-    }
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(.32, .028, 8, 24), glowMat);
+    halo.position.set(0, 2.18, 0); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
   }
   if (tier >= 5) {
-    part(soldierGeo.hand, glowMat, 0, 2.18, 0, 1.1, .5, 1.1);
-    for (const side of [-1, 1]) {
-      part(soldierGeo.hand, glowMat, side * .2, 2.35, -.02, .45, .7, .45);
-    }
-    const cape = part(soldierGeo.torso, accentMat, 0, .95, .45, .9, 1.15, .2);
-    cape.scale.set(.85, 1.1, .15);
-    cape.rotation.x = -.2;
+    part(soldierGeo.hand, glowMat, 0, 2.2, 0, .85, .4, .85);
+    const cape = part(soldierGeo.cube, accentMat, 0, 1.05, .38, .55, .85, .05);
+    cape.rotation.x = -.18;
   }
 
-  /* 手臂：短粗 + 大手套 */
+  /* 手臂：比例正常，手略大 */
   const armL = new THREE.Group(), armR = new THREE.Group();
-  armL.position.set(-.48, 1.22, 0); armR.position.set(.48, 1.22, 0);
-  const armBase = weaponId === "rocket" ? .85 : weaponId === "sniper" ? 1.1 : weaponId === "shotgun" ? .98 : 1.02;
+  armL.position.set(-.4, 1.36, 0); armR.position.set(.4, 1.36, 0);
+  const armBase = weaponId === "rocket" ? .88 : weaponId === "sniper" ? 1.12 : weaponId === "shotgun" ? 1.0 : 1.05;
   armL.rotation.x = armR.rotation.x = armBase;
   rig.add(armL, armR);
-  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.2, .85, 1.2, armL);
-  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.2, .85, 1.2, armR);
-  part(soldierGeo.hand, skinMat, 0, -.4, 0, 1.25, 1.25, 1.25, armL);
-  part(soldierGeo.hand, skinMat, 0, -.4, 0, 1.25, 1.25, 1.25, armR);
+  part(soldierGeo.limb, uniformMat, 0, -.2, 0, 1.05, .95, 1.05, armL);
+  part(soldierGeo.limb, uniformMat, 0, -.2, 0, 1.05, .95, 1.05, armR);
+  part(soldierGeo.hand, skinMat, 0, -.42, 0, 1.15, 1.15, 1.15, armL);
+  part(soldierGeo.hand, skinMat, 0, -.42, 0, 1.15, 1.15, 1.15, armR);
 
-  /* 武器：圆润科幻比例 */
+  /* 武器：略夸张但干净 */
   const gunRig = new THREE.Group();
-  gunRig.position.set(.12, 1.1, -.62); rig.add(gunRig);
+  gunRig.position.set(.1, 1.2, -.55); rig.add(gunRig);
   const gunBody = (sx, sy, sz, z = 0) => part(soldierGeo.gunBody, gunMat, 0, 0, z, sx, sy, sz, gunRig);
   const gunAccent = (sx, sy, sz, z) => part(soldierGeo.gunTip, accentMat, 0, 0, z, sx, sy, sz, gunRig);
   if (weaponId === "smg") {
-    gunBody(1.1, 1.1, .75); gunAccent(1, 1, .7, -.42);
-    part(soldierGeo.hand, darkMat, -.04, -.14, .06, .55, .9, .55, gunRig);
+    gunBody(1.05, 1.05, .7); gunAccent(.95, .95, .65, -.4);
+    part(soldierGeo.hand, darkMat, -.03, -.12, .05, .45, .75, .45, gunRig);
   } else if (weaponId === "shotgun") {
-    gunBody(1.35, 1.2, 1.1, -.05); gunAccent(1.4, 1.3, .8, -.55);
+    gunBody(1.25, 1.1, 1.0, -.04); gunAccent(1.3, 1.2, .75, -.52);
   } else if (weaponId === "sniper") {
-    gunBody(.9, .95, 1.45, -.1); gunAccent(1.1, 1, .9, -.7);
-    part(soldierGeo.hand, accentMat, 0, .12, -.15, .55, .4, .7, gunRig);
-    part(soldierGeo.hand, darkMat, -.04, -.14, .1, .5, .95, .5, gunRig);
+    gunBody(.85, .9, 1.35, -.08); gunAccent(1.0, .95, .85, -.66);
+    part(soldierGeo.hand, accentMat, 0, .1, -.12, .45, .32, .55, gunRig);
+    part(soldierGeo.hand, darkMat, -.03, -.12, .1, .42, .8, .42, gunRig);
   } else if (weaponId === "rocket") {
-    gunBody(1.8, 1.6, 1.2, -.05); gunAccent(2.0, 1.8, .7, -.7);
-    gunRig.position.y += .1;
+    gunBody(1.65, 1.45, 1.1, -.04); gunAccent(1.8, 1.6, .65, -.66);
+    gunRig.position.y += .08;
   } else if (weaponId === "laser") {
-    gunBody(1.2, 1.2, 1.05, -.05);
-    part(soldierGeo.gunBody, accentMat, 0, 0, -.08, 1.15, 1.15, 1.0, gunRig);
-    part(soldierGeo.hand, gunMat, 0, -.02, .28, .9, .8, .9, gunRig);
-    part(soldierGeo.gunTip, glowMat, 0, .02, -.62, 1.1, 1.1, 1.1, gunRig);
+    gunBody(1.1, 1.1, 1.0, -.04);
+    part(soldierGeo.gunBody, accentMat, 0, 0, -.06, 1.05, 1.05, .95, gunRig);
+    part(soldierGeo.hand, gunMat, 0, -.02, .25, .75, .65, .75, gunRig);
+    part(soldierGeo.gunTip, glowMat, 0, .02, -.58, 1.05, 1.05, 1.05, gunRig);
   } else {
-    gunBody(1, 1, .95); gunAccent(.9, .9, .85, -.48);
-    part(soldierGeo.hand, darkMat, -.04, -.14, .08, .5, .95, .5, gunRig);
+    gunBody(.95, .95, .9); gunAccent(.85, .85, .8, -.45);
+    part(soldierGeo.hand, darkMat, -.03, -.12, .07, .42, .8, .42, gunRig);
   }
 
   g.userData.rig = rig;
@@ -521,7 +505,7 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   ud.legs[1].rotation.x = -Math.sin(p) * amp;
   ud.arms[0].rotation.x = ud.armBase - Math.sin(p) * .09 - ud.recoil * .2;
   ud.arms[1].rotation.x = ud.armBase + Math.sin(p) * .09 - ud.recoil * .2;
-  ud.gunRig.position.z = -.58 + ud.recoil * .13;
+  ud.gunRig.position.z = -.55 + ud.recoil * .12;
   ud.rig.position.y = .035 + Math.abs(Math.sin(p)) * .075;
   ud.rig.rotation.x = Math.sin(p * 2) * .018;
   ud.rig.rotation.z = -lean * .16 + Math.sin(p * 3) * ud.hit * .08;
@@ -538,11 +522,11 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   }
   if (ud.halo) {
     ud.halo.rotation.z += .045;
-    ud.halo.position.y = 2.2 + Math.sin(t * 4 + ud.phase) * .055;
+    ud.halo.position.y = 2.18 + Math.sin(t * 4 + ud.phase) * .04;
   }
   if (ud.head && !ud.mixer) {
-    ud.head.rotation.y = Math.sin(t * 1.2 + ud.phase) * .04;
-    ud.head.position.y = 1.72 + Math.sin(t * 2.4 + ud.phase) * .012;
+    ud.head.rotation.y = Math.sin(t * 1.2 + ud.phase) * .03;
+    ud.head.position.y = 1.82 + Math.sin(t * 2.4 + ud.phase) * .01;
   }
   if (ud.mergeT > 0) {
     ud.mergeT = Math.max(0, ud.mergeT - .035);
@@ -940,7 +924,9 @@ let bossProjectiles = [];
 const screenFlashEl = document.getElementById("screenFlash");
 const speedFxEl = document.getElementById("speedFx");
 function addShake(a) {
-  shake = Math.min(shake + a, 0.55);
+  // Soft cap + diminishing returns so rocket volleys / multi-hits cannot stack into nausea.
+  const room = Math.max(0, 0.38 - shake);
+  shake = Math.min(0.38, shake + a * (0.45 + room * 1.4));
   if (a >= .28) globalThis.soldierRushHaptic?.(a >= .4);
 }
 function triggerHitStop(frames) {
@@ -951,24 +937,24 @@ function applyRankInsignia(mesh, rank) {
   const rig = mesh.userData.rig;
   if (!rig) return;
   const group = new THREE.Group();
-  group.position.set(-.28, 1.18, -.38);
+  group.position.set(-.22, 1.28, -.34);
   const badgeMat = new THREE.MeshToonMaterial({
     color: rank >= 12 ? 0xffd66b : 0xc7e7ff,
     gradientMap: TOON_RAMP,
     emissive: rank >= 12 ? 0x7a3d00 : 0x183e62,
-    emissiveIntensity: .45,
+    emissiveIntensity: .4,
   });
   const bars = 1 + ((rank - 1) % 4);
   for (let i = 0; i < bars; i++) {
     const bar = new THREE.Mesh(soldierGeo.hand, badgeMat);
-    bar.scale.set(.28, .18, .22);
-    bar.position.set(i * .1, Math.floor((rank - 1) / 4) * .08, 0);
+    bar.scale.set(.22, .14, .18);
+    bar.position.set(i * .08, Math.floor((rank - 1) / 4) * .06, 0);
     group.add(bar);
   }
   if (rank >= 9) {
     const star = new THREE.Mesh(soldierGeo.hand, badgeMat);
-    star.scale.set(.35, .35, .35);
-    star.position.set(.14, .12, 0);
+    star.scale.set(.28, .28, .28);
+    star.position.set(.12, .1, 0);
     group.add(star);
   }
   rig.add(group);
@@ -1372,6 +1358,7 @@ function spawnEnemyGroup() {
   const formation = Math.floor(Math.random() * 3);
   let gunnersLeft = distance >= 250 ? Math.min(2, Math.random() < .55 ? 1 + (Math.random() < .3 ? 1 : 0) : 0) : 0;
   const shotDamage = standardProjectileDamage();
+  const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < groupSize; i++) {
     let type = "normal";
     if (weakWave) type = "fodder";
@@ -1409,7 +1396,7 @@ function spawnEnemyGroup() {
     mesh.position.set(clamp(baseX + xOffset, -ROAD_HALF + 1, ROAD_HALF - 1), 0, SPAWN_Z + zOffset);
     mesh.rotation.y = Math.PI;   // 面向玩家
     scene.add(mesh);
-    const hp = enemyHealth(type, shotDamage, Math.random());
+    const hp = enemyHealth(type, shotDamage, Math.random(), shotCount);
     const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type, speed, radius, score: sc, contactDmg, attackCd: type === "gunner" ? rand(90, 150) : 0 };
     attachHpLabel(e);
     enemies.push(e);
@@ -1480,20 +1467,26 @@ function killEnemy(e) {
 }
 
 /* ================= 选择门(Left / Right Gate) ================= */
-/* 门效果池:正负混合,每对门随机抽两个不同效果,穿门前看清颜色与文字! */
-const GATE_EFFECTS = [
+/* 每对门固定：一边增益 + 一边减益，左右随机，穿门前看清颜色与文字 */
+const GATE_BUFFS = [
   { text: "火力 +8%",   color: 0xff7043, css: "#ff9a76", good: true,
     apply() { player.damageBonus = Math.min(.6, player.damageBonus + .08); } },
   { text: "射速 +10%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
     apply() { player.fireRateMul = Math.max(.65, player.fireRateMul * .9); } },
   { text: "经验 +55",  color: 0x8bc34a, css: "#aed581", good: true,
     apply() { grantHeroXp(55); } },
+  { text: "护盾 +1",   color: 0x66e7ff, css: "#7df6ff", good: true,
+    apply() { player.shield = Math.min(player.shield + 1, 9); } },
+];
+const GATE_DEBUFFS = [
   { text: "火力 -8%",   color: 0xb71c1c, css: "#ef5350", good: false,
     apply() { player.damageBonus = Math.max(0, player.damageBonus - .08); } },
   { text: "射速 -10%", color: 0x5d4037, css: "#bcaaa4", good: false,
     apply() { player.fireRateMul = Math.min(1.35, player.fireRateMul / .9); } },
   { text: "护甲 -2",   color: 0x7b1fa2, css: "#ce93d8", good: false,
     apply() { const hero = heroUnit(); if (hero) damageUnit(hero, 2); player.hurtT = 18; } },
+  { text: "减速 2秒",  color: 0x455a64, css: "#90a4ae", good: false,
+    apply() { player.moveSlowT = Math.max(player.moveSlowT, 120); } },
 ];
 function spawnGatePair() {
   const group = new THREE.Group();
@@ -1526,11 +1519,11 @@ function spawnGatePair() {
     group.add(sp);
     mats.push(mat, floorMat);
   }
-  /* 随机抽两个不同效果(可能全增益、全减益或混合,需要抉择) */
-  const i = Math.floor(Math.random() * GATE_EFFECTS.length);
-  let j = Math.floor(Math.random() * (GATE_EFFECTS.length - 1));
-  if (j >= i) j++;
-  const left = GATE_EFFECTS[i], right = GATE_EFFECTS[j];
+  const buff = GATE_BUFFS[Math.floor(Math.random() * GATE_BUFFS.length)];
+  const debuff = GATE_DEBUFFS[Math.floor(Math.random() * GATE_DEBUFFS.length)];
+  const buffOnLeft = Math.random() < .5;
+  const left = buffOnLeft ? buff : debuff;
+  const right = buffOnLeft ? debuff : buff;
   door(-ROAD_HALF / 2, left.color,  left.text,  left.css);
   door( ROAD_HALF / 2, right.color, right.text, right.css);
   group.position.z = SPAWN_Z;
@@ -1780,44 +1773,59 @@ function fireUnitWeapon(unit, p) {
 
   unit.fireCd = effectiveFireInterval();
   unit.mesh.userData.recoil = 1;
-  if (unit.tier >= 4) {
-    addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.7 : 1.15);
-    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 9 : 5, .16);
+  if (unit.tier >= 4 && frame % 3 === 0) {
+    addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.35 : 1.0);
+    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 5 : 3, .14);
   }
   addMuzzleFlash(p.x + .1, p.z - 1.15);
+  const blastLv = skillLevel(player.skills, "blast");
+  const rocketLike = def.type === "rocket" || unit.tier >= 5;
   for (const vx of dirs) {
     const mesh = bulletMeshPool.acquire();
     mesh.visible = true;
     mesh.material = bulletMaterial(unit.weaponId);
     mesh.position.set(p.x + .1, 1.04 + unit.tier * .025, p.z - 1.0);
     mesh.rotation.y = Math.atan2(-vx, def.speed);
-    if (def.type === "rocket") mesh.scale.set(2.2, 2.2, 2.8);
+    if (def.type === "rocket") mesh.scale.set(2.0, 2.0, 2.5);
     else if (def.type === "laser") mesh.scale.set(.72, .72, 3.2);
     else if (def.type === "pierce") mesh.scale.z = 1.8;
+    else mesh.scale.set(1, 1, 1);
     scene.add(mesh);
     bullets.push({
       mesh, weaponId: unit.weaponId, type: def.type, vx, dmg: damage,
       px: mesh.position.x, pz: mesh.position.z, speed: def.speed,
-      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 2 + unit.tier : 1) + skillLevel(player.skills, "pierce"),
-      radius: (def.radius || (unit.tier >= 5 ? 1.35 : 0)) * (1 + skillLevel(player.skills, "blast") * .12),
-      blastMul: 1 + skillLevel(player.skills, "blast") * .1,
-      starburst: unit.tier >= 5, hitIds: new Set(),
+      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 1 + Math.floor(unit.tier / 2) : 1) + skillLevel(player.skills, "pierce"),
+      radius: rocketLike
+        ? (def.radius || 1.15) * (1 + blastLv * .08)
+        : 0,
+      blastMul: 1 + blastLv * .08,
+      starburst: rocketLike,
+      hitIds: new Set(),
     });
   }
 }
 
+let lastExplosionShakeFrame = -999;
 function explodeProjectile(b, x, z, primaryTarget = null) {
   const radius = b.radius || 2.8;
-  addParticles(x, 1.1, z, "#ff8a5c", 18, .42);
-  addSparks(x, 1.2, z, 0xffc06a, mobileDevice ? 10 : 18, .5);
-  addSmoke(x, 1.4, z, 3, radius * .5);
-  addShockwave(x, .08, z, 0xff7a55, radius * 1.35);
-  addShake(.18); flashScreen("#ff8a5c", .2);
+  addParticles(x, 1.1, z, "#ff8a5c", quality.level === "low" ? 10 : 16, .38);
+  addSparks(x, 1.2, z, 0xffc06a, mobileDevice ? 6 : 12, .42);
+  addSmoke(x, 1.4, z, 2, radius * .42);
+  addShockwave(x, .08, z, 0xff7a55, radius * 1.15);
+  // Throttle explosion camera punch: multi-rocket frames otherwise stack trauma hard.
+  if (frame - lastExplosionShakeFrame > 8) {
+    addShake(.08);
+    flashScreen("#ff8a5c", .12);
+    lastExplosionShakeFrame = frame;
+  }
+  const primaryMul = 1;
+  const splashMul = .38 * (b.blastMul || 1);
   for (const e of enemies) {
     if (e.dead) continue;
     const dx = e.mesh.position.x - x, dz = e.mesh.position.z - z;
     if (dx * dx + dz * dz <= radius * radius) {
-      e.hp -= b.dmg * (b.blastMul || 1) * (e.id === primaryTarget ? 1 : .6);
+      const mul = e.id === primaryTarget ? primaryMul * (b.blastMul || 1) : splashMul;
+      e.hp -= b.dmg * mul;
       e.mesh.userData.hit = 1;
       drawHpLabel(e);
       if (e.hp <= 0) killEnemy(e);
@@ -1825,7 +1833,10 @@ function explodeProjectile(b, x, z, primaryTarget = null) {
   }
   if (boss) {
     const dx = boss.mesh.position.x - x, dz = boss.mesh.position.z - z;
-    if (dx * dx + dz * dz <= radius * radius) damageBoss(b.dmg * (b.blastMul || 1) * (primaryTarget === "boss" ? 1 : .6), x, z);
+    if (dx * dx + dz * dz <= radius * radius) {
+      const mul = primaryTarget === "boss" ? primaryMul * (b.blastMul || 1) : splashMul;
+      damageBoss(b.dmg * mul, x, z);
+    }
   }
 }
 
@@ -2736,11 +2747,11 @@ function update() {
   });
 
   /* 摄像机 trauma 震动:取平方 + 平滑正弦噪声,比白噪声抖动更有冲击感、不发"麻" */
-  shake *= 0.86;
+  shake *= 0.82;
   if (shake < 0.002) shake = 0;
   const sh = shake * shake;
-  const ox = (Math.sin(t * 57.1) + Math.sin(t * 29.3)) * .5 * sh * 2.2;
-  const oy = (Math.sin(t * 61.7) + Math.sin(t * 31.9)) * .5 * sh * 2.2;
+  const ox = (Math.sin(t * 57.1) + Math.sin(t * 29.3)) * .5 * sh * 1.35;
+  const oy = (Math.sin(t * 61.7) + Math.sin(t * 31.9)) * .5 * sh * 1.2;
   cameraFollowX += (player.x * .11 - cameraFollowX) * .06;
   camera.position.set(
     cameraFollowX + ox,
@@ -2748,7 +2759,7 @@ function update() {
     cameraBase.z
   );
   camera.lookAt(cameraFollowX * .55, .35, cameraBase.lookZ);
-  camera.rotation.z += Math.sin(t * 54.3) * sh * .05;   // 轻微翻滚增强冲击
+  camera.rotation.z += Math.sin(t * 54.3) * sh * .028;
 
   if (screenFlashT > 0) screenFlashT--;
   screenFlashEl.style.opacity = String(Math.min(.42, screenFlashT / 12));

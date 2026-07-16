@@ -1,5 +1,6 @@
-export const WEAPON_STAGE_POWER = [2, 3.2, 5, 7.5, 11, 16] as const;
-export const MIN_FIRE_INTERVAL = 6;
+/** Per-stage total firepower budget. Growth stays gentle so multi-shot stages do not melt fodder. */
+export const WEAPON_STAGE_POWER = [2, 2.9, 4.2, 5.8, 7.6, 9.6] as const;
+export const MIN_FIRE_INTERVAL = 7;
 export const BOSS_TARGET_SECONDS = 12;
 
 export const DAMAGE_VALUES = {
@@ -55,12 +56,13 @@ export interface RewardCore<TReward = unknown> {
   magnetRadius: number;
 }
 
+/** Hits needed if a single projectile lands. Multi-shot is compensated in enemyHealth. */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [.7, 1],
-  normal: [1.2, 2.8],
-  gunner: [4, 6],
-  shield: [5, 7],
-  heavy: [8, 12],
+  fodder: [1.4, 2.2],
+  normal: [2.6, 4.4],
+  gunner: [5.5, 8],
+  shield: [7, 10],
+  heavy: [11, 16],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -75,7 +77,8 @@ export function projectileDamage(
   medalBoost = 0,
 ): number {
   const power = WEAPON_STAGE_POWER[Math.max(0, Math.min(WEAPON_STAGE_POWER.length - 1, stage - 1))];
-  const normalized = power / Math.pow(Math.max(1, shotCount), .75);
+  // Stronger multi-shot split so dense volleys do not overkill a single lane.
+  const normalized = power / Math.pow(Math.max(1, shotCount), .92);
   return normalized * (1 + damageBoost) * (1 + skillBoost) * (1 + medalBoost);
 }
 
@@ -83,10 +86,17 @@ export function fireInterval(baseRate: number, fireRateMultiplier = 1, reloadLev
   return Math.max(MIN_FIRE_INTERVAL, baseRate * fireRateMultiplier * Math.pow(.94, Math.max(0, reloadLevel)));
 }
 
-export function enemyHealth(archetype: EnemyArchetype, standardProjectileDamage: number, roll = .5): number {
+export function enemyHealth(
+  archetype: EnemyArchetype,
+  standardProjectileDamage: number,
+  roll = .5,
+  shotCount = 1,
+): number {
   const [minHits, maxHits] = ENEMY_HIT_RANGES[archetype];
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
-  return Math.max(1, Math.ceil(standardProjectileDamage * hits));
+  // Extra durability when the player fires many projectiles (partial multi-hits expected).
+  const volley = 1 + Math.log2(Math.max(1, shotCount)) * .42;
+  return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley));
 }
 
 export function resolveHeroDamage(vitals: HeroVitals, profile: DamageProfile, didDodge = false): DamageResult {

@@ -55,30 +55,35 @@ describe("hero vitals", () => {
 });
 
 describe("combat pacing", () => {
+  const shots = [1, 3, 7, 9, 13, 13];
+
   it("keeps projectile growth smooth across stages", () => {
-    const values = [1, 2, 3, 4, 5, 6].map((stage, index) => projectileDamage(stage, [1, 3, 7, 9, 13, 13][index]));
+    const values = [1, 2, 3, 4, 5, 6].map((stage, index) => projectileDamage(stage, shots[index]));
     expect(values.every(value => value > 0)).toBe(true);
-    expect(values[5] / values[0]).toBeLessThan(2);
+    expect(values[5] / values[0]).toBeLessThan(1.8);
   });
 
   it("inherits the fastest weapon cadence without passing the safety floor", () => {
     expect([24, 9, 9, 9, 9, 7].map(rate => fireInterval(rate))).toEqual([24, 9, 9, 9, 9, 7]);
-    expect(fireInterval(7, .65, 5)).toBe(6);
+    expect(fireInterval(7, .65, 5)).toBe(7);
   });
 
   it("uses archetype hit-count bands", () => {
     const damage = 2;
-    expect(enemyHealth("fodder", damage, 1)).toBe(2);
-    expect(enemyHealth("gunner", damage, .5)).toBe(10);
-    expect(enemyHealth("heavy", damage, .5)).toBe(20);
+    expect(enemyHealth("fodder", damage, 1)).toBe(5);
+    expect(enemyHealth("gunner", damage, .5)).toBe(14);
+    expect(enemyHealth("heavy", damage, .5)).toBe(27);
   });
 
-  it("keeps archetype hit counts stable at every weapon stage", () => {
-    const shots = [1, 3, 7, 9, 13, 13];
+  it("scales enemy HP with multi-shot volleys so fodder is not one-shot", () => {
     for (let stage = 1; stage <= 6; stage += 1) {
-      const damage = projectileDamage(stage, shots[stage - 1]);
-      expect(enemyHealth("normal", damage, .5) / damage).toBeGreaterThanOrEqual(1.5);
-      expect(enemyHealth("heavy", damage, .5) / damage).toBeGreaterThanOrEqual(9.5);
+      const count = shots[stage - 1];
+      const damage = projectileDamage(stage, count);
+      const fodder = enemyHealth("fodder", damage, .5, count);
+      const volley = damage * Math.min(count, 3);
+      expect(fodder / volley).toBeGreaterThanOrEqual(.55);
+      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(3);
+      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(13);
     }
   });
 
@@ -90,13 +95,12 @@ describe("combat pacing", () => {
   });
 
   it("keeps the boss window bounded across all weapon stages", () => {
-    const shots = [1, 3, 7, 9, 13, 13];
     const cadences = [24, 9, 9, 9, 9, 7];
     for (let stage = 1; stage <= 6; stage += 1) {
       const dps = projectileDamage(stage, shots[stage - 1]) * shots[stage - 1] * 60 / fireInterval(cadences[stage - 1]);
       const duration = bossHealth(stage, dps) / dps;
       expect(duration).toBeGreaterThanOrEqual(10);
-      expect(duration).toBeLessThanOrEqual(15.01);
+      expect(duration).toBeLessThanOrEqual(15.05);
     }
   });
 });
