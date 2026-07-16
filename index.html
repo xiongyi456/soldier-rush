@@ -375,9 +375,11 @@ window.addEventListener("DOMContentLoaded", function () {
     }
     if (waited === 3000) setStatus("手机首次加载较慢，请继续等待…");
     if (waited === 8000) setStatus("仍在加载，请保持页面打开…");
-    if (waited >= 25000) {
+    if (waited === 15000) setStatus("网络偏慢。可继续等，或点按钮清除缓存重试");
+    if (waited >= 18000) {
       clearInterval(timer);
-      markFailed("超过 25 秒仍未就绪。多半是旧缓存，请点「清除缓存并刷新」。");
+      // Don't leave users stranded: unlock a recovery action.
+      markFailed("加载过久。请点「清除缓存并刷新」。若仍失败，换 Wi‑Fi 或用电脑同一局域网地址。");
     }
   }, 250);
 

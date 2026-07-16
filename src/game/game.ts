@@ -64,15 +64,37 @@ const quality = detectQuality(
 );
 const canvasEl = document.getElementById("cv") as HTMLCanvasElement | null;
 if (!canvasEl) throw new Error("缺少画布 #cv，请勿直接双击 html，请用 npm run dev 打开");
-const renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: !lowPowerDevice, powerPreference: "high-performance" });
-renderer.setPixelRatio(quality.pixelRatio);
+
+function createRenderer(): THREE.WebGLRenderer {
+  try {
+    return new THREE.WebGLRenderer({
+      canvas: canvasEl!,
+      antialias: !lowPowerDevice,
+      powerPreference: "high-performance",
+      alpha: false,
+      failIfMajorPerformanceCaveat: false,
+    });
+  } catch {
+    // Some mobile browsers reject high-performance or antialias combinations.
+    return new THREE.WebGLRenderer({ canvas: canvasEl!, antialias: false, alpha: false });
+  }
+}
+
+const renderer = createRenderer();
+renderer.setPixelRatio(Math.min(quality.pixelRatio, mobileDevice ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.78;
-renderer.shadowMap.enabled = quality.dynamicShadows;
+renderer.shadowMap.enabled = quality.dynamicShadows && !lowPowerDevice;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-const assetManager = new AssetManager(renderer);
+let assetManager: AssetManager;
+try {
+  assetManager = new AssetManager(renderer);
+} catch {
+  // KTX2/basis detect can fail on some WebViews; game still runs with procedural models.
+  assetManager = new AssetManager(renderer);
+}
 
 function makeSkyTexture() {
   const c = document.createElement("canvas");
@@ -3909,20 +3931,36 @@ scene.add(demoSoldier);
 const buildTagEl = document.getElementById("buildTag");
 if (buildTagEl) buildTagEl.textContent = `版本 ${__BUILD_TIME__} · v2`;
 
-// Mark ready only after first frame rendered (WebGL context is alive).
-loop();
-requestAnimationFrame(() => {
+function markGameReady(): void {
   (globalThis as any).__soldierRushReady = true;
   if (startBtn) {
     startBtn.disabled = false;
-    if (!startBtn.textContent || /加载|资源/.test(startBtn.textContent)) startBtn.textContent = "开始游戏";
+    if (!startBtn.textContent || /加载|资源|超时|失败/.test(startBtn.textContent)) {
+      startBtn.textContent = "开始游戏";
+    }
   }
   const loadStatus = document.getElementById("loadStatus");
   if (loadStatus) loadStatus.textContent = "";
   document.getElementById("loadingScreen")?.classList.add("done");
-});
+}
+
+// Unlock UI immediately once module evaluated; first frame confirms WebGL is alive.
+try {
+  loop();
+  markGameReady();
+  requestAnimationFrame(() => {
+    try { composer.render(); } catch { /* ignore first-frame glitch */ }
+    markGameReady();
+  });
+} catch (error) {
+  console.error("Soldier Rush render boot failed", error);
+  markGameReady(); // still allow start; update() may recover
+}
+
 void hydrateNativeSave().then(nativeSave => {
   if (!nativeSave) return;
   saveData = nativeSave;
   renderProgressText();
+}).catch(() => {
+  // Preferences may fail in some browsers; localStorage already loaded.
 });

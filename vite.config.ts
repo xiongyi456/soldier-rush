@@ -44,6 +44,18 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         navigateFallback: null,
+        // Don't cache opaque/cross-origin failures that can break mobile boots.
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === "script" || request.destination === "style",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "soldier-rush-runtime",
+              networkTimeoutSeconds: 8,
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 },
+            },
+          },
+        ],
       },
     }),
   ],
