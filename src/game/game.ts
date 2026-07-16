@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-17";
+const BUILD_VERSION = "mg-road-18";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
