@@ -56,7 +56,7 @@ body {
   position: fixed;
   z-index: 6;
   left: calc(16px + var(--safe-left));
-  bottom: calc(16px + var(--safe-bottom));
+  bottom: calc(40px + var(--safe-bottom));
   padding: 8px 13px;
   border: 1px solid rgba(255,255,255,.2);
   border-radius: 16px;
@@ -66,6 +66,24 @@ body {
   font-weight: 900;
   backdrop-filter: blur(7px);
   pointer-events: none;
+}
+
+#versionTag {
+  position: fixed;
+  z-index: 12;
+  left: calc(10px + var(--safe-left));
+  bottom: calc(8px + var(--safe-bottom));
+  padding: 3px 9px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 10px;
+  color: rgba(200, 230, 255, .88);
+  background: rgba(8, 18, 36, .72);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
 }
 
 #vitalsHud {
@@ -169,7 +187,8 @@ body {
 @media (max-width: 700px) {
   .choice-grid { grid-template-columns: 1fr; max-height: 68vh; overflow-y: auto; }
   .skill-card { min-height: 124px; }
-  #rankBadge { bottom: calc(8px + var(--safe-bottom)); left: calc(8px + var(--safe-left)); }
+  #rankBadge { bottom: calc(36px + var(--safe-bottom)); left: calc(8px + var(--safe-left)); }
+  #versionTag { bottom: calc(6px + var(--safe-bottom)); left: calc(8px + var(--safe-left)); font-size: 10px; }
   #vitalsHud { top: calc(41px + var(--safe-top)); left: calc(8px + var(--safe-left)); width: min(190px, 54vw); }
   .vital-row { grid-template-columns: 66px 1fr; font-size: 9px; }
 }

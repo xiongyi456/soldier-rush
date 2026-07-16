@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-7";
+const BUILD_VERSION = "mg-road-8";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -4193,7 +4193,13 @@ demoSoldier.scale.set(2.15, 2.15, 2.15);
 scene.add(demoSoldier);
 
 const buildTagEl = document.getElementById("buildTag");
-if (buildTagEl) buildTagEl.textContent = `版本 ${__BUILD_TIME__} · v2`;
+if (buildTagEl) buildTagEl.textContent = `版本 ${BUILD_VERSION} · ${__BUILD_TIME__}`;
+const versionTagEl = document.getElementById("versionTag");
+if (versionTagEl) {
+  // 左下角常驻版本，方便对照是否刷到最新包
+  const shortTime = String(__BUILD_TIME__ || "").replace("T", " ").slice(5, 16);
+  versionTagEl.textContent = `${BUILD_VERSION}${shortTime ? " · " + shortTime : ""}`;
+}
 
 (globalThis as any).__soldierRushStart = requestStartGame;
 (globalThis as any).__soldierRushReady = true;
