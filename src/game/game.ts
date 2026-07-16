@@ -50,6 +50,17 @@ const BOSS_DEFS = [
 ];
 /** 战役主线共 5 个 Boss；击败第 5 个后可选胜利结算或无尽冲锋 */
 const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
+/**
+ * Boss 召唤门槛：击杀数 或 军衔 满足其一即可（先到先刷）。
+ * 不再按固定米数刷 Boss，战斗节奏跟打怪/晋升走。
+ */
+const BOSS_SUMMON = [
+  { kills: 28, rank: 3 },   // 1 铁罐头 · 下士前后
+  { kills: 62, rank: 5 },   // 2 铁饼 · 上士 / 霰弹
+  { kills: 105, rank: 7 },  // 3 红点 · 中尉 / 狙击
+  { kills: 155, rank: 9 },  // 4 爆米花 · 少校
+  { kills: 210, rank: 11 }, // 5 棱镜 · 上校
+] as const;
 let endlessMode = false;
 
 let saveData = loadSaveV2();
@@ -952,7 +963,9 @@ let combo = 0, comboTimer = 0, critT = 0;   // 连杀 / 暴击模式
 let shake = 0;                              // 摄像机 trauma(0-1),渲染时取平方更有冲击感
 let cameraFollowX = 0, screenFlashT = 0;
 let hitStopT = 0;                           // 卡帧计数:>0 时主循环冻结模拟,只渲染
-let boss = null, bossCount = 0, nextBossDistance = 500, bossWarning = false;
+let boss = null, bossCount = 0, bossWarning = false;
+let killsAtLastBoss = 0;   // 击败上一 Boss 时的击杀数（无尽增量门槛）
+let bossSummonCd = 0;      // 预警后入场倒计时（帧）
 let bossHazards = [];
 let bossProjectiles = [];
 let eventIndex = 0, nextEventAt = 180, eventHordeT = 0;
@@ -1346,6 +1359,8 @@ function processRankProgress() {
     player.level++;
     evolveHero(player.level);
     openSkillChoice();
+    // 晋升后也可能跨过 Boss 军衔门槛
+    if (!boss && !bossWarning) trySummonBoss("军衔晋升");
     return;
   }
   if (player.xp >= COMMANDER_MERIT) {
@@ -1511,6 +1526,7 @@ function killEnemy(e) {
   else if (critT > 0 && combo > 0 && combo % 5 === 0) triggerHitStop(1);
   combo++;
   comboTimer = 150 + skillLevel(player.skills, "combo") * 45;
+  if (!boss && !bossWarning) trySummonBoss("清剿达标");
   trySpawnMine(ep.x, ep.z);
   const shieldSkill = skillLevel(player.skills, "shield");
   if (shieldSkill > 0) {
@@ -2369,6 +2385,37 @@ function estimateBossDps() {
   return weaponDps + droneDps;
 }
 
+function currentBossRequirement() {
+  if (!endlessMode && bossCount >= CAMPAIGN_BOSS_COUNT) return null;
+  if (!endlessMode) return BOSS_SUMMON[bossCount];
+  // 无尽：在上一 Boss 击杀数基础上再清一批怪
+  return { kills: killsAtLastBoss + 38 + bossCount * 6, rank: 99 };
+}
+
+function bossProgressReady() {
+  const req = currentBossRequirement();
+  if (!req) return false;
+  return kills >= req.kills || player.level >= req.rank;
+}
+
+function bossProgressNear() {
+  const req = currentBossRequirement();
+  if (!req || bossProgressReady()) return false;
+  return kills >= req.kills - 8 || player.level >= req.rank - 1;
+}
+
+function trySummonBoss(reason = "击杀") {
+  if (boss || !running || uiPaused || player.pendingPromotion || player.prestigeReady) return false;
+  if (!bossProgressReady()) return false;
+  if (bossWarning) return false;
+  bossWarning = true;
+  bossSummonCd = 55;   // ~0.9s telegraph before spawn
+  const next = BOSS_DEFS[bossCount % BOSS_DEFS.length];
+  addFloatText(0, 6, -18, `${next.name} 感应到了你 · ${reason}!`, "#ffcc66", 6.4);
+  flashScreen("#ffb85c", .28);
+  return true;
+}
+
 function beginBossBattle() {
   clearHazardsForBoss();
   bossHazards.forEach(disposeBossHazard);
@@ -2376,6 +2423,7 @@ function beginBossBattle() {
   bossProjectiles.forEach(disposeBossProjectile);
   bossProjectiles = [];
   eventHordeT = 0;
+  bossWarning = true;
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
   const estimatedDps = estimateBossDps();
@@ -2513,17 +2561,22 @@ function defeatBoss() {
   addShake(.45);
   spawnEnemyCd = 150; spawnCrateCd = 100; spawnGateCd = 360; spawnTrapCd = 300;
 
+  killsAtLastBoss = kills;
+  bossWarning = false;
   // 战役终点:第 5 个 Boss 后弹出胜利,可结束或进入无尽冲锋
   if (!endlessMode && bossCount >= CAMPAIGN_BOSS_COUNT) {
-    nextBossDistance = distance + 99999;
     openCampaignVictory();
     return;
   }
-  nextBossDistance += 500;
+  const nextReq = currentBossRequirement();
   if (endlessMode) {
     addFloatText(0, 5.5, -10, `无尽第 ${bossCount} 战通过!`, "#ffd86b", 6);
+    if (nextReq) addFloatText(0, 4.4, -8, `下战 · 再击杀 ${Math.max(0, nextReq.kills - kills)} 怪`, "#ffcc80", 5.2);
   } else {
     addFloatText(0, 5.5, -10, `战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}`, "#ffe27a", 5.5);
+    if (nextReq) {
+      addFloatText(0, 4.4, -8, `下 Boss · 击杀 ${nextReq.kills} 或 ${rankName(nextReq.rank)}`, "#b8f58b", 5.4);
+    }
   }
 }
 
@@ -2992,13 +3045,21 @@ function update() {
       eventHordeT--;
       worldSpeed *= 1.08;
     }
-    if (!bossWarning && distance >= nextBossDistance - 50) {
-      bossWarning = true;
-      addFloatText(0, 6, -20, `Boss将在 ${Math.ceil(nextBossDistance - distance)}m 后出现`, "#ffcc66", 6.2);
-      flashScreen("#ffb85c", .22);
+    // Boss 由击杀/军衔召唤，不再按固定里程
+    if (!boss && bossWarning && bossSummonCd > 0) {
+      bossSummonCd--;
+      if (bossSummonCd <= 0 && !uiPaused && !player.pendingPromotion) beginBossBattle();
+      else if (bossSummonCd <= 0) bossSummonCd = 20; // wait until skill UI closes
+    } else if (!boss && !bossWarning && bossProgressReady()) {
+      trySummonBoss("战力压制");
+    } else if (!boss && !bossWarning && bossProgressNear() && frame % 90 === 0) {
+      const req = currentBossRequirement();
+      if (req) {
+        const leftKills = Math.max(0, req.kills - kills);
+        addFloatText(0, 5.6, -16, leftKills > 0 ? `Boss 将近 · 再击杀 ${leftKills}` : "Boss 将近 · 晋升可召唤", "#ffd27a", 4.6);
+      }
     }
-    if (distance >= nextBossDistance) beginBossBattle();
-    else if (!bossWarning && distance >= nextEventAt && distance < nextBossDistance - 80) {
+    if (!boss && !bossWarning && distance >= nextEventAt) {
       triggerRunEvent();
     }
   }
@@ -3659,13 +3720,15 @@ function openCampaignVictory() {
 function continueEndlessRun() {
   victoryPanelEl?.classList.add("hidden");
   endlessMode = true;
-  nextBossDistance = distance + 500;
+  killsAtLastBoss = kills;
   bossWarning = false;
   running = true;
   uiPaused = false;
   lastLoopTime = performance.now();
   accumulator = 0;
+  const req = currentBossRequirement();
   addFloatText(0, 5.5, -10, "无尽冲锋开启 · Boss 会更强!", "#ff8a65", 6.2);
+  if (req) addFloatText(0, 4.4, -8, `下战 · 再击杀 ${Math.max(1, req.kills - kills)} 怪`, "#ffcc80", 5);
   flashScreen("#ff8a65", .3);
 }
 
@@ -3780,8 +3843,17 @@ function updateHUD() {
   if (skillLevel(player.skills, "orbit") > 0) b += `<span style="color:#7df6ff">光刃 ×${skillLevel(player.skills, "orbit") + 1}</span>`;
   if (eventHordeT > 0) b += `<span style="color:#ff8a65">敌潮 ${Math.ceil(eventHordeT / 60)}s</span>`;
   if (boss) b += `<span style="color:#ffd54f">${boss.def.name} · 阶段${boss.phase || 1}</span>`;
-  else if (!endlessMode) b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}</span>`;
-  else b += `<span style="color:#ff8a65">无尽 · ${bossCount} 战</span>`;
+  else if (bossWarning) b += `<span style="color:#ffb74d">Boss 降临中…</span>`;
+  else {
+    const req = currentBossRequirement();
+    if (req && !endlessMode) {
+      const left = Math.max(0, req.kills - kills);
+      b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT} · 再杀${left}/升${rankName(req.rank)}</span>`;
+    } else if (req) {
+      b += `<span style="color:#ff8a65">无尽 · 再杀 ${Math.max(0, req.kills - kills)}</span>`;
+    } else if (!endlessMode) b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}</span>`;
+    else b += `<span style="color:#ff8a65">无尽 · ${bossCount} 战</span>`;
+  }
   b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;
   if (saveData.medals > 0) b += `<span style="color:#ffd86b">司令勋章 ×${saveData.medals}</span>`;
   buffsEl.innerHTML = b;
@@ -3810,7 +3882,14 @@ function renderStatsPanel() {
   rows.push(["本局技能", skillText || "暂无"]);
   rows.push(["司令勋章", `${saveData.medals} / 20`]);
   if (player.prestigeReady) rows.push(["转生", `<button id="statsPrestige" style="padding:5px 12px;border:0;border-radius:12px;background:#d99a27;color:#fff;font-weight:900">授勋转生</button>`]);
-  rows.push(["战役进度", endlessMode ? `无尽冲锋 · 已过 ${bossCount} 战` : `${Math.min(bossCount, CAMPAIGN_BOSS_COUNT)} / ${CAMPAIGN_BOSS_COUNT} Boss`]);
+  {
+    const req = currentBossRequirement();
+    const progress = endlessMode
+      ? `无尽 · 已过 ${bossCount} 战` + (req ? ` · 再杀 ${Math.max(0, req.kills - kills)}` : "")
+      : `${Math.min(bossCount, CAMPAIGN_BOSS_COUNT)} / ${CAMPAIGN_BOSS_COUNT} Boss` +
+        (req ? ` · 再杀 ${Math.max(0, req.kills - kills)} 或 ${rankName(req.rank)}` : "");
+    rows.push(["战役进度", progress]);
+  }
   rows.push(["最高Boss", saveData.highestBoss]);
   rows.push(["历史最佳", `${saveData.bestScore}分 / ${saveData.bestDistance}m`]);
   statsContent.innerHTML = rows.map(([title, value]) => `<div class="stat-row"><span class="stat-title">${title}</span><b>${value}</b></div>`).join("");
@@ -3925,7 +4004,7 @@ function startGame() {
   createHero();
   frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
   combo = 0; comboTimer = 0; critT = 0; shake = 0;
-  bossCount = 0; nextBossDistance = 500; bossWarning = false; endlessMode = false;
+  bossCount = 0; killsAtLastBoss = 0; bossWarning = false; bossSummonCd = 0; endlessMode = false;
   eventIndex = 0; nextEventAt = 180; eventHordeT = 0;
   victoryPanelEl?.classList.add("hidden");
   cameraFollowX = 0; screenFlashT = 0;
