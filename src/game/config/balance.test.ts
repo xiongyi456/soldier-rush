@@ -71,22 +71,24 @@ describe("combat pacing", () => {
   it("uses archetype hit-count bands", () => {
     const damage = 2;
     expect(enemyHealth("fodder", damage, 1)).toBe(3);
-    expect(enemyHealth("gunner", damage, .5)).toBe(9);
-    expect(enemyHealth("heavy", damage, .5)).toBe(18);
+    expect(enemyHealth("gunner", damage, .5)).toBe(7);
+    expect(enemyHealth("heavy", damage, .5)).toBe(14);
   });
 
   it("keeps early fodder clearable with starter MG", () => {
     const damage = projectileDamage(1, 1);
     const fodder = enemyHealth("fodder", damage, .5, 1, 1);
-    expect(fodder / damage).toBeLessThanOrEqual(1.5);
-    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeGreaterThanOrEqual(1.6);
+    expect(fodder / damage).toBeLessThanOrEqual(1.3);
+    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeGreaterThanOrEqual(1.3);
+    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeLessThanOrEqual(2.4);
   });
 
-  it("scales trash HP with powerScale so buffed MG does not one-shot forever", () => {
-    const damage = projectileDamage(3, 1) * 1.4;
+  it("applies powerScale linearly for light durability tracking", () => {
+    const damage = projectileDamage(2, 1);
     const soft = enemyHealth("normal", damage, .5, 1, 1);
-    const hard = enemyHealth("normal", damage, .5, 1, 2.2);
-    expect(hard / soft).toBeGreaterThanOrEqual(2);
+    const hard = enemyHealth("normal", damage, .5, 1, 1.5);
+    expect(hard / soft).toBeGreaterThanOrEqual(1.4);
+    expect(hard / soft).toBeLessThanOrEqual(1.7);
   });
 
   it("targets an eleven to sixteen second boss window", () => {

@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-6";
+const BUILD_VERSION = "mg-road-7";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -1319,15 +1319,16 @@ function evolveHero(nextRank = player.level) {
   return true;
 }
 
-/** 小怪耐久跟踪当前枪：攻击加成 + 攻速 + 军衔阶段 + 已过 Boss 数。 */
+/** 小怪耐久轻度跟踪火力：只吃部分攻速/攻击加成，避免“越强化越打不动”。 */
 function enemyPowerScale() {
-  const atk = 1 + player.damageBonus;
-  // fireRateMul 越小射越快；换算成相对基础攻速的倍率
-  const as = 1 / Math.max(.42, player.fireRateMul);
+  const atkBonus = Math.max(0, player.damageBonus);           // 0 ~ 0.8
+  const as = 1 / Math.max(.42, player.fireRateMul);           // 1 ~ ~2.4
+  const asBonus = Math.max(0, as - 1);
+  // 约吃 40% 攻击加成 + 30% 攻速加成，而不是 1:1 反制
+  const power = 1 + atkBonus * .4 + asBonus * .3;
   const stage = weaponStageForRank(player.level);
-  // 第一关结束后才明显变硬，避免开局又打不动
-  const postBoss = bossCount <= 0 ? 1 : 1.22 + bossCount * .16;
-  return Math.max(1, atk * Math.pow(as, .9) * (1 + (stage - 1) * .05) * postBoss);
+  const postBoss = bossCount <= 0 ? 1 : 1 + bossCount * .08;
+  return Math.max(.9, power * (1 + (stage - 1) * .03) * postBoss);
 }
 
 function spawnEnemyHp(type, roll = Math.random(), elite = false) {
@@ -1832,7 +1833,7 @@ function spawnHordeWave() {
 }
 
 /* ================= 选择门 ================= */
-/* 一边增益 + 一边减益；增益/减益只动机关枪的攻速或攻击 */
+/* 好门：攻速/攻击 + 弹射/穿甲/暴击/分裂等枪技；坏门：减攻速或减攻击 */
 function buffFireRate(mul) {
   player.fireRateMul = Math.max(.42, player.fireRateMul * mul);
   retuneLivingEnemies();
@@ -1841,21 +1842,49 @@ function buffDamage(add) {
   player.damageBonus = Math.min(.8, Math.max(0, player.damageBonus + add));
   retuneLivingEnemies();
 }
+/** 穿门直接 +1 技能等级（已满则退回小攻速） */
+function gateGrantSkill(skillId) {
+  const def = SKILL_DEFS.find(s => s.id === skillId);
+  if (!def) { buffFireRate(.92); return; }
+  const lv = skillLevel(player.skills, skillId);
+  if (lv >= def.maxLevel) {
+    buffFireRate(.90);
+    addFloatText(player.x, 3.8, PLAYER_Z - 1, `${def.name}已满 · 改给攻速`, "#8fd9ff", 4.2);
+    return;
+  }
+  player.skills[skillId] = lv + 1;
+  const hero = heroUnit();
+  if (hero && skillId === "armor") {
+    hero.maxArmor += 8;
+    hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
+  }
+  if (skillId === "drone") syncDrones();
+  if (skillId === "orbit") syncOrbitBlades();
+  addFloatText(player.x, 4.0, PLAYER_Z - 1, `${def.icon} ${def.name} Lv.${player.skills[skillId]}`, "#ffe27a", 5.0);
+}
 const GATE_BUFFS = [
-  { text: "攻速 +20%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
-    apply() { buffFireRate(.80); } },
-  { text: "攻速 +14%", color: 0x29b6f6, css: "#81d4fa", good: true,
-    apply() { buffFireRate(.86); } },
+  { text: "攻速 +16%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
+    apply() { buffFireRate(.84); } },
   { text: "攻击 +10%", color: 0xff7043, css: "#ff9a76", good: true,
     apply() { buffDamage(.10); } },
-  { text: "攻击 +6%",  color: 0xff8a65, css: "#ffab91", good: true,
-    apply() { buffDamage(.06); } },
+  { text: "↺ 弹射 +1", color: 0x9ad8ff, css: "#9ad8ff", good: true,
+    apply() { gateGrantSkill("ricochet"); } },
+  { text: "➹ 穿甲 +1", color: 0xd7a4ff, css: "#d7a4ff", good: true,
+    apply() { gateGrantSkill("pierce"); } },
+  { text: "✦ 暴击 +1", color: 0xffd54f, css: "#ffd54f", good: true,
+    apply() { gateGrantSkill("critical"); } },
+  { text: "⑂ 分裂 +1", color: 0xba68c8, css: "#ba68c8", good: true,
+    apply() { gateGrantSkill("split"); } },
+  { text: "🔥 火力 +1", color: 0xff8a65, css: "#ff8a65", good: true,
+    apply() { gateGrantSkill("firepower"); } },
+  { text: "⚡ 装填 +1", color: 0x81d4fa, css: "#81d4fa", good: true,
+    apply() { gateGrantSkill("reload"); } },
 ];
 const GATE_DEBUFFS = [
-  { text: "攻速 -14%", color: 0x5d4037, css: "#bcaaa4", good: false,
-    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .86); retuneLivingEnemies(); } },
-  { text: "攻速 -10%", color: 0x6d4c41, css: "#a1887f", good: false,
-    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .90); retuneLivingEnemies(); } },
+  { text: "攻速 -12%", color: 0x5d4037, css: "#bcaaa4", good: false,
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .88); retuneLivingEnemies(); } },
+  { text: "攻速 -8%",  color: 0x6d4c41, css: "#a1887f", good: false,
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .92); retuneLivingEnemies(); } },
   { text: "攻击 -8%",  color: 0xb71c1c, css: "#ef5350", good: false,
     apply() { buffDamage(-.08); } },
   { text: "攻击 -5%",  color: 0xc62828, css: "#e57373", good: false,
