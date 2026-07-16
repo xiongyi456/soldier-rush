@@ -3883,11 +3883,8 @@ function endGame() {
 function requestStartGame() {
   if (!running) startGame();
 }
-startBtn?.addEventListener("click", () => {
-  if ((globalThis as any).__soldierRushReady) requestStartGame();
-});
+// main.ts wires the start button after this module finishes loading.
 (globalThis as any).__soldierRushStart = requestStartGame;
-(globalThis as any).__soldierRushReady = true;
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
@@ -3938,17 +3935,8 @@ scene.add(demoSoldier);
 const buildTagEl = document.getElementById("buildTag");
 if (buildTagEl) buildTagEl.textContent = `版本 ${__BUILD_TIME__} · v2`;
 
-(globalThis as any).__soldierRushReady = true;
 (globalThis as any).__soldierRushStart = requestStartGame;
-if (startBtn) {
-  startBtn.disabled = false;
-  if (!startBtn.textContent || /加载|资源|超时|失败/.test(startBtn.textContent)) {
-    startBtn.textContent = "开始游戏";
-  }
-}
-const loadStatus = document.getElementById("loadStatus");
-if (loadStatus) loadStatus.textContent = "";
-document.getElementById("loadingScreen")?.classList.add("done");
+(globalThis as any).__soldierRushReady = true;
 
 try {
   loop();

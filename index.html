@@ -251,10 +251,10 @@
       司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
   <div class="big" id="resultText"></div>
   <p id="progressText" class="progress-text"></p>
-  <button id="startBtn">开始游戏</button>
+  <button id="startBtn" disabled>请稍候…</button>
   <button id="installBtn" class="secondary hidden">安装到手机桌面</button>
   <p id="installTip" class="install-tip">手机浏览器打开后，可从浏览器菜单选择“添加到主屏幕”</p>
-  <p id="loadStatus" class="install-tip">点击开始后加载游戏（首次稍等几秒）</p>
+  <p id="loadStatus" class="install-tip">正在集结部队，加载完成后即可开始</p>
   <p id="buildTag" class="build-tag"></p>
  </div>
 </div>
@@ -289,25 +289,6 @@
   </div>
 </div>
 
-<script>
-// Lightweight fallback only. Real start flow lives in main.ts.
-window.addEventListener("DOMContentLoaded", function () {
-  var button = document.getElementById("startBtn");
-  var loading = document.getElementById("loadingScreen");
-  if (loading) loading.classList.add("done");
-  if (!button) return;
-  button.disabled = false;
-  if (!button.textContent) button.textContent = "开始游戏";
-
-  if (location.protocol === "file:") {
-    button.textContent = "请用服务器打开";
-    button.addEventListener("click", function (e) {
-      e.preventDefault();
-      alert("请运行 npm run dev，用手机访问同一 Wi-Fi 下的地址。不要双击 html。");
-    }, true);
-  }
-});
-</script>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
