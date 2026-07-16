@@ -56,13 +56,16 @@ export interface RewardCore<TReward = unknown> {
   magnetRadius: number;
 }
 
-/** Hits needed per archetype. Starter MG should delete fodder in ~1 shot. */
+/**
+ * Hits needed per archetype at baseline power (stage-1 MG, no buffs).
+ * Early fodder is soft; after Boss1, game.ts multiplies via powerScale so they track player AS/ATK.
+ */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [0.85, 1.25],
-  normal: [1.5, 2.4],
-  gunner: [3.2, 4.8],
-  shield: [4.0, 6.0],
-  heavy: [6.5, 9.5],
+  fodder: [0.9, 1.35],
+  normal: [1.8, 2.8],
+  gunner: [3.5, 5.2],
+  shield: [4.5, 6.5],
+  heavy: [7.0, 10.5],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -86,19 +89,23 @@ export function fireInterval(baseRate: number, fireRateMultiplier = 1, reloadLev
   return Math.max(MIN_FIRE_INTERVAL, baseRate * fireRateMultiplier * Math.pow(.94, Math.max(0, reloadLevel)));
 }
 
+/**
+ * @param powerScale multiplies durability for player AS/ATK/stage/boss-progress
+ *                   so trash never stays fixed while the MG snowballs.
+ */
 export function enemyHealth(
   archetype: EnemyArchetype,
   standardProjectileDamage: number,
   roll = .5,
   shotCount = 1,
+  powerScale = 1,
 ): number {
   const [minHits, maxHits] = ENEMY_HIT_RANGES[archetype];
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
-  // Dense multi-shot stages often land several bullets on one fodder; pad harder than log2*0.42.
   const shots = Math.max(1, shotCount);
-  // Light multi-shot pad only — single rifle + gate fire-rate is the main power curve.
-  const volley = 1 + Math.log2(shots) * .35;
-  return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley));
+  const volley = 1 + Math.log2(shots) * .4;
+  const scale = Math.max(.85, powerScale);
+  return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley * scale));
 }
 
 export function resolveHeroDamage(vitals: HeroVitals, profile: DamageProfile, didDodge = false): DamageResult {

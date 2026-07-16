@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-3";
+const BUILD_VERSION = "mg-road-4";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -50,12 +50,13 @@ const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
  * Boss 召唤门槛：击杀数 或 军衔 满足其一即可（先到先刷）。
  * 不再按固定米数刷 Boss，战斗节奏跟打怪/晋升走。
  */
+/** 击杀 或 军衔先到先刷；门槛抬高，避免开局打几只就进 Boss。 */
 const BOSS_SUMMON = [
-  { kills: 28, rank: 3 },   // 1 铁罐头 · 下士前后
-  { kills: 62, rank: 5 },   // 2 铁饼 · 上士
-  { kills: 105, rank: 7 },  // 3 红点 · 中尉
-  { kills: 155, rank: 9 },  // 4 爆米花 · 少校
-  { kills: 210, rank: 11 }, // 5 棱镜 · 上校
+  { kills: 55, rank: 4 },   // 1 铁罐头 · 约中士
+  { kills: 120, rank: 6 },  // 2 铁饼 · 少尉
+  { kills: 200, rank: 8 },  // 3 红点 · 上尉
+  { kills: 290, rank: 10 }, // 4 爆米花 · 中校
+  { kills: 390, rank: 12 }, // 5 棱镜 · 将军
 ] as const;
 let endlessMode = false;
 
@@ -1312,19 +1313,34 @@ function evolveHero(nextRank = player.level) {
   const text = previousWeapon === hero.weaponId ? `${rankName(nextRank)} 晋升!` : `${rankName(nextRank)} · ${def.label} 进化!`;
   addFloatText(position.x, 4.4, position.z, text, def.css, 6.2);
   addShake(.35); flashScreen(def.css, .42);
-  // Weapon stage / multi-shot just jumped — retune living trash so they are not instantly melted.
-  if (previousWeapon !== hero.weaponId) retuneLivingEnemies();
+  // 晋升后火力阶段变化，当场小怪同步变硬
+  retuneLivingEnemies();
   return true;
 }
 
-function retuneLivingEnemies() {
+/** 小怪耐久跟踪当前枪：攻击加成 + 攻速 + 军衔阶段 + 已过 Boss 数。 */
+function enemyPowerScale() {
+  const atk = 1 + player.damageBonus;
+  // fireRateMul 越小射越快；换算成相对基础攻速的倍率
+  const as = 1 / Math.max(.42, player.fireRateMul);
+  const stage = weaponStageForRank(player.level);
+  // 第一关结束后才明显变硬，避免开局又打不动
+  const postBoss = bossCount <= 0 ? 1 : 1.22 + bossCount * .16;
+  return Math.max(1, atk * Math.pow(as, .9) * (1 + (stage - 1) * .05) * postBoss);
+}
+
+function spawnEnemyHp(type, roll = Math.random(), elite = false) {
   const shotDamage = standardProjectileDamage();
   const shotCount = Math.max(1, inheritedShotDirections().length);
+  const base = enemyHealth(type, shotDamage, roll, shotCount, enemyPowerScale());
+  return Math.max(1, Math.ceil(base * (elite ? 1.85 : 1)));
+}
+
+function retuneLivingEnemies() {
   for (const e of enemies) {
     if (e.dead) continue;
     const ratio = e.maxHp > 0 ? Math.max(0, e.hp / e.maxHp) : 1;
-    const base = enemyHealth(e.type, shotDamage, .55, shotCount);
-    const nextMax = Math.max(1, Math.ceil(base * (e.elite ? 1.85 : 1)));
+    const nextMax = spawnEnemyHp(e.type, .55, !!e.elite);
     e.maxHp = nextMax;
     e.hp = Math.max(1, Math.ceil(nextMax * ratio));
     drawHpLabel(e);
@@ -1435,15 +1451,15 @@ function spawnEnemyGroup() {
   let gunnersLeft = bossCount >= 2 && distance >= 200
     ? Math.min(2, Math.random() < .55 ? 1 + (Math.random() < .3 ? 1 : 0) : 0)
     : 0;
-  const shotDamage = standardProjectileDamage();
-  const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < groupSize; i++) {
     let type = "normal";
     if (weakWave) type = "fodder";
     else if (gunnersLeft > 0 && i >= Math.ceil(groupSize / 2) && Math.random() < .55) { type = "gunner"; gunnersLeft--; }
     else {
       const roll = Math.random();
-      type = roll < .54 ? "normal" : roll < .82 ? "shield" : "heavy";
+      // 打完第一关后少刷 fodder/normal 脆皮，多刷盾/重装
+      const heavyBias = bossCount >= 1 ? .12 : 0;
+      type = roll < (.54 - heavyBias) ? "normal" : roll < (.82 - heavyBias * .5) ? "shield" : "heavy";
     }
     let mesh, speed, radius, sc, contactDmg;
     if (type === "fodder") {
@@ -1474,7 +1490,7 @@ function spawnEnemyGroup() {
     mesh.position.set(clamp(baseX + xOffset, -ROAD_HALF + 1, ROAD_HALF - 1), 0, SPAWN_Z + zOffset);
     mesh.rotation.y = Math.PI;   // 面向玩家
     scene.add(mesh);
-    const hp = enemyHealth(type, shotDamage, Math.random(), shotCount);
+    const hp = spawnEnemyHp(type, Math.random());
     const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type, speed, radius, score: sc, contactDmg, attackCd: type === "gunner" ? rand(90, 150) : 0 };
     attachHpLabel(e);
     enemies.push(e);
@@ -1729,8 +1745,6 @@ function triggerRunEvent() {
 }
 
 function spawnEliteSquad() {
-  const shotDamage = standardProjectileDamage();
-  const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < 3; i++) {
     const type = i === 0 ? "heavy" : i === 1 ? "shield" : "gunner";
     const mesh = makeSoldier(type === "heavy" ? 0x7b1fa2 : type === "shield" ? 0x5c6bc0 : 0x8e24aa, type === "gunner" ? "sniper" : "rifle", 3);
@@ -1743,7 +1757,7 @@ function spawnEliteSquad() {
     );
     aura.rotation.x = -Math.PI / 2; aura.position.y = .04; mesh.add(aura);
     scene.add(mesh);
-    const hp = enemyHealth(type, shotDamage, .85, shotCount) * 1.85;
+    const hp = spawnEnemyHp(type, .85, true);
     const e = {
       id: nextEnemyId++, mesh, hp, maxHp: hp, type,
       speed: type === "heavy" ? .045 : type === "shield" ? .07 : .06,
@@ -1770,15 +1784,13 @@ function spawnAirdropCrates() {
 
 function spawnHordeWave() {
   eventHordeT = 18 * 60;
-  const shotDamage = standardProjectileDamage();
-  const shotCount = Math.max(1, inheritedShotDirections().length);
   const n = mobileDevice ? 10 : 14;
   for (let i = 0; i < n; i++) {
     const mesh = makeSoldier(0xef5b42); mesh.scale.setScalar(.78);
     mesh.position.set(rand(-ROAD_HALF + 1.2, ROAD_HALF - 1.2), 0, SPAWN_Z - rand(0, 18));
     mesh.rotation.y = Math.PI;
     scene.add(mesh);
-    const hp = enemyHealth("fodder", shotDamage, .4, shotCount);
+    const hp = spawnEnemyHp("fodder", .4);
     const e = {
       id: nextEnemyId++, mesh, hp, maxHp: hp, type: "fodder",
       speed: rand(.14, .2), radius: .6, score: 6, contactDmg: DAMAGE_VALUES.normal, attackCd: 0,
@@ -1791,25 +1803,33 @@ function spawnHordeWave() {
 
 /* ================= 选择门 ================= */
 /* 一边增益 + 一边减益；增益/减益只动机关枪的攻速或攻击 */
+function buffFireRate(mul) {
+  player.fireRateMul = Math.max(.42, player.fireRateMul * mul);
+  retuneLivingEnemies();
+}
+function buffDamage(add) {
+  player.damageBonus = Math.min(.8, Math.max(0, player.damageBonus + add));
+  retuneLivingEnemies();
+}
 const GATE_BUFFS = [
   { text: "攻速 +20%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
-    apply() { player.fireRateMul = Math.max(.42, player.fireRateMul * .80); } },
+    apply() { buffFireRate(.80); } },
   { text: "攻速 +14%", color: 0x29b6f6, css: "#81d4fa", good: true,
-    apply() { player.fireRateMul = Math.max(.42, player.fireRateMul * .86); } },
+    apply() { buffFireRate(.86); } },
   { text: "攻击 +10%", color: 0xff7043, css: "#ff9a76", good: true,
-    apply() { player.damageBonus = Math.min(.8, player.damageBonus + .10); } },
+    apply() { buffDamage(.10); } },
   { text: "攻击 +6%",  color: 0xff8a65, css: "#ffab91", good: true,
-    apply() { player.damageBonus = Math.min(.8, player.damageBonus + .06); } },
+    apply() { buffDamage(.06); } },
 ];
 const GATE_DEBUFFS = [
   { text: "攻速 -14%", color: 0x5d4037, css: "#bcaaa4", good: false,
-    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .86); } },
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .86); retuneLivingEnemies(); } },
   { text: "攻速 -10%", color: 0x6d4c41, css: "#a1887f", good: false,
-    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .90); } },
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .90); retuneLivingEnemies(); } },
   { text: "攻击 -8%",  color: 0xb71c1c, css: "#ef5350", good: false,
-    apply() { player.damageBonus = Math.max(0, player.damageBonus - .08); } },
+    apply() { buffDamage(-.08); } },
   { text: "攻击 -5%",  color: 0xc62828, css: "#e57373", good: false,
-    apply() { player.damageBonus = Math.max(0, player.damageBonus - .05); } },
+    apply() { buffDamage(-.05); } },
 ];
 function spawnGatePair() {
   const group = new THREE.Group();
@@ -2073,11 +2093,11 @@ function applyReward(r, x, z) {
       break;
     }
     case "firerate":
-      player.fireRateMul = Math.max(.42, player.fireRateMul * .80);
+      buffFireRate(.80);
       addFloatText(x, 3.6, z, "攻速提升!", "#4fc3f7", 4.2);
       break;
     case "damage":
-      player.damageBonus = Math.min(.8, player.damageBonus + .10);
+      buffDamage(.10);
       addFloatText(x, 3.6, z, "攻击提升!", "#ff8a65", 4.2);
       break;
     case "shield":   player.shield = Math.min(player.shield + 2, 9); break;
@@ -2372,7 +2392,7 @@ function currentBossRequirement() {
   if (!endlessMode && bossCount >= CAMPAIGN_BOSS_COUNT) return null;
   if (!endlessMode) return BOSS_SUMMON[bossCount];
   // 无尽：在上一 Boss 击杀数基础上再清一批怪
-  return { kills: killsAtLastBoss + 38 + bossCount * 6, rank: 99 };
+  return { kills: killsAtLastBoss + 70 + bossCount * 12, rank: 99 };
 }
 
 function bossProgressReady() {
@@ -2517,9 +2537,10 @@ function defeatBoss() {
     addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
   }
   // Boss reward: permanent-for-run fire-rate kick (single-rifle power curve).
-  // Boss 奖励：二选一式强化，攻速 + 攻击各给一点
+  // Boss 奖励：攻速 + 攻击；当场与后续小怪会按新火力变硬
   player.fireRateMul = Math.max(.42, player.fireRateMul * .88);
   player.damageBonus = Math.min(.8, player.damageBonus + .06);
+  retuneLivingEnemies();
   const bossXp = 40 + defeated.number * 15;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
   addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
@@ -2900,9 +2921,8 @@ function resolveBossHazard(h) {
 
 function spawnBossMinions() {
   const count = Math.min(2 + Math.ceil((boss?.number || 1) / 2), 6);
-  const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < count; i++) {
-    const hp = enemyHealth("normal", standardProjectileDamage(), .65, shotCount);
+    const hp = spawnEnemyHp("normal", .65);
     const mesh = makeSoldier(0xc83b42, "rifle", 1);
     mesh.position.set(rand(-6, 6), 0, -42 - rand(0, 8)); mesh.rotation.y = Math.PI; scene.add(mesh);
     const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type: "normal", speed: .11 + (boss?.number || 1) * .008, radius: .75, score: 25, contactDmg: DAMAGE_VALUES.normal, attackCd: 0 };
