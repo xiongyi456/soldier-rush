@@ -42,12 +42,15 @@ const WEAPON_DEFS = {
 };
 const WEAPON_ORDER = Object.keys(WEAPON_DEFS);
 const BOSS_DEFS = [
-  { name: "坦克指挥官", color: 0x496d42, accent: 0xffc44f, unlock: "smg", theme: "tank" },
-  { name: "盾甲巨兵",   color: 0x526f87, accent: 0x8de8ff, unlock: "shotgun", theme: "shield" },
-  { name: "狙击机甲",   color: 0x604f84, accent: 0xd8a5ff, unlock: "sniper", theme: "sniper" },
-  { name: "火箭巨兽",   color: 0x8b3e36, accent: 0xff9d5c, unlock: "rocket", theme: "rocket" },
-  { name: "能量守卫",   color: 0x256f78, accent: 0x72f5ff, unlock: "laser", theme: "energy" },
+  { name: "坦克指挥官", color: 0x496d42, accent: 0xffc44f, unlock: "smg", theme: "tank", signature: "双线重炮 / 阵地炮击" },
+  { name: "盾甲巨兵",   color: 0x526f87, accent: 0x8de8ff, unlock: "shotgun", theme: "shield", signature: "正面冲撞 / 护盾震荡波" },
+  { name: "狙击机甲",   color: 0x604f84, accent: 0xd8a5ff, unlock: "sniper", theme: "sniper", signature: "追踪锁定 / 安全点网格" },
+  { name: "火箭巨兽",   color: 0x8b3e36, accent: 0xff9d5c, unlock: "rocket", theme: "rocket", signature: "导弹雨 / 缺口地毯炸" },
+  { name: "能量守卫",   color: 0x256f78, accent: 0x72f5ff, unlock: "laser", theme: "energy", signature: "切割光束 / 扩散能环" },
 ];
+/** 战役主线共 5 个 Boss；击败第 5 个后可选胜利结算或无尽冲锋 */
+const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
+let endlessMode = false;
 
 let saveData = loadSaveV2();
 function persistSave() { persistSaveV2(saveData); }
@@ -2208,9 +2211,11 @@ function beginBossBattle() {
     introT: 110, windupT: 0, pendingShots: null,
   };
   bossBarEl.classList.remove("hidden");
-  bossNameEl.textContent = `BOSS ${bossNumber} · ${def.name} · 阶段1`;
+  const chapter = endlessMode ? `无尽#${bossNumber}` : `${bossNumber}/${CAMPAIGN_BOSS_COUNT}`;
+  bossNameEl.textContent = `BOSS ${chapter} · ${def.name} · 阶段1`;
   updateBossBar();
-  addFloatText(0, 6, -24, `${def.name} 登场!`, "#ffdd77", 7);
+  addFloatText(0, 6.4, -24, `${def.name} 登场!`, "#ffdd77", 7);
+  addFloatText(0, 4.8, -20, def.signature || "", def.accent ? `#${def.accent.toString(16).padStart(6, "0")}` : "#ffe27a", 5.2);
   flashScreen("#ffce73", .36); addShake(.38);
 }
 
@@ -2218,13 +2223,13 @@ function announceBossPhase(phase) {
   if (!boss || boss.phaseAnnounced[phase]) return;
   boss.phaseAnnounced[phase] = true;
   boss.phase = phase;
-  bossNameEl.textContent = `BOSS ${boss.number} · ${boss.def.name} · 阶段${phase}`;
-  const label = phase === 2 ? "二阶段 · 攻势加强!" : "终焉阶段 · 全力输出!";
+  const chapter = endlessMode ? `无尽#${boss.number}` : `${boss.number}/${CAMPAIGN_BOSS_COUNT}`;
+  bossNameEl.textContent = `BOSS ${chapter} · ${boss.def.name} · 阶段${phase}`;
+  const label = phase === 2 ? `二阶段 · ${boss.def.signature}` : "终焉阶段 · 全力输出!";
   addFloatText(0, 6.4, -18, label, phase === 2 ? "#ffb74d" : "#ff5252", 7.2);
   flashScreen(phase === 2 ? "#ffb74d" : "#ff5252", .42);
   addShake(.4); triggerHitStop(3);
   addShockwave(boss.mesh.position.x, .1, boss.mesh.position.z, boss.def.accent, 7);
-  // Clear lingering telegraphs so the new pattern is readable.
   bossHazards.forEach(disposeBossHazard); bossHazards = [];
   bossProjectiles.forEach(disposeBossProjectile); bossProjectiles = [];
   boss.pendingShots = null; boss.windupT = 0;
@@ -2232,7 +2237,6 @@ function announceBossPhase(phase) {
   if (phase === 2) spawnBossMinions();
   if (phase === 3) {
     spawnBossMinions();
-    // Force an immediate denser attack pattern on phase entry.
     boss.attackIndex = Math.max(boss.attackIndex, 1);
   }
 }
@@ -2272,13 +2276,13 @@ function defeatBoss() {
   saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
   persistSave();
   shatterBoss(defeated);
-  triggerHitStop(5); addShake(.5);   // 击破 Boss:全场最重的一次定格
+  triggerHitStop(5); addShake(.5);
   scene.remove(defeated.mesh); disposeSoldierMesh(defeated.mesh);
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
   bossProjectiles.forEach(disposeBossProjectile);
   bossProjectiles = [];
-  boss = null; bossCount++; nextBossDistance += 500; bossWarning = false;
+  boss = null; bossCount++; bossWarning = false;
   bossBarEl.classList.add("hidden");
   const repairLevel = skillLevel(player.skills, "repair");
   const hero = heroUnit();
@@ -2305,6 +2309,19 @@ function defeatBoss() {
   addImpactRing(0, .08, -22, defeated.def.accent, 8);
   addShake(.45);
   spawnEnemyCd = 150; spawnCrateCd = 100; spawnGateCd = 360; spawnTrapCd = 300;
+
+  // 战役终点:第 5 个 Boss 后弹出胜利,可结束或进入无尽冲锋
+  if (!endlessMode && bossCount >= CAMPAIGN_BOSS_COUNT) {
+    nextBossDistance = distance + 99999;
+    openCampaignVictory();
+    return;
+  }
+  nextBossDistance += 500;
+  if (endlessMode) {
+    addFloatText(0, 5.5, -10, `无尽第 ${bossCount} 战通过!`, "#ffd86b", 6);
+  } else {
+    addFloatText(0, 5.5, -10, `战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}`, "#ffe27a", 5.5);
+  }
 }
 
 function shatterBoss(target) {
@@ -2334,19 +2351,43 @@ function disposeBossProjectile(projectile) {
   });
 }
 
-function launchBossProjectile(kind, x, z, life = kind === "lane" ? 74 : 62) {
+function bossHazardMaterial(color, opacity) {
+  return new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+  });
+}
+
+function launchBossProjectile(kind, x, z, life = 60) {
   if (!boss) return;
-  const color = kind === "lane" ? 0xff4560 : 0xffad4f;
+  const accent = boss.def.accent;
+  const color =
+    kind === "beam" ? 0xff4560 :
+    kind === "shell" ? 0xffc44f :
+    kind === "shock" ? 0x8de8ff :
+    kind === "lock" ? 0xd8a5ff :
+    kind === "rain" ? 0xff9d5c :
+    kind === "ring" ? 0x72f5ff :
+    accent;
   const mesh = new THREE.Group();
   const coreMat = new THREE.MeshBasicMaterial({ color, depthTest: false, toneMapped: false });
-  const shellMat = new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: .82, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-  const body = new THREE.Mesh(kind === "lane" ? new THREE.BoxGeometry(1.15, .42, 4.8) : new THREE.SphereGeometry(.72, 14, 10), coreMat);
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(kind === "lane" ? .9 : 1.15, 12, 8), shellMat);
+  const shellMat = new THREE.MeshBasicMaterial({
+    color: 0xffe0a0, transparent: true, opacity: .82, depthTest: false, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+  });
+  let body;
+  if (kind === "beam") body = new THREE.Mesh(new THREE.BoxGeometry(1.25, .38, 5.2), coreMat);
+  else if (kind === "shell") body = new THREE.Mesh(new THREE.SphereGeometry(.95, 12, 10), coreMat);
+  else if (kind === "shock") body = new THREE.Mesh(new THREE.TorusGeometry(1.1, .18, 8, 20), coreMat);
+  else if (kind === "lock") body = new THREE.Mesh(new THREE.ConeGeometry(.55, 1.8, 8), coreMat);
+  else if (kind === "ring") body = new THREE.Mesh(new THREE.TorusGeometry(1.3, .14, 8, 24), coreMat);
+  else body = new THREE.Mesh(new THREE.SphereGeometry(.72, 14, 10), coreMat);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(kind === "shell" ? 1.25 : .95, 12, 8), shellMat);
   body.renderOrder = glow.renderOrder = 8;
   mesh.add(body, glow);
-  if (kind === "missile") {
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(.5, 2.4, 10), shellMat);
-    tail.rotation.x = Math.PI / 2; tail.position.z = 1.35; tail.renderOrder = 8;
+  if (kind === "rain" || kind === "lock") {
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(.45, 2.1, 10), shellMat);
+    tail.rotation.x = Math.PI / 2; tail.position.z = 1.2; tail.renderOrder = 8;
     mesh.add(tail);
   }
   mesh.position.copy(boss.mesh.position).add(new THREE.Vector3(0, 2.15, -1.2));
@@ -2355,17 +2396,21 @@ function launchBossProjectile(kind, x, z, life = kind === "lane" ? 74 : 62) {
   bossProjectiles.push({ kind, x, z, mesh, coreMat, shellMat, life, maxLife: life });
 }
 
-function bossHazardMaterial(color, opacity) {
-  return new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: false,
-    blending: THREE.AdditiveBlending, toneMapped: false
-  });
-}
-
-function createBossHazard(kind, x, z = -9, timer = kind === "lane" ? 74 : 62) {
+/**
+ * Hazard kinds (each boss uses a distinct mix):
+ * beam  - long lane telegraph (tank / energy)
+ * shell - large artillery circle (tank)
+ * shock - wide frontal shockwave (shield)
+ * lock  - tracks player then freezes (sniper)
+ * rain  - scatter missile point (rocket)
+ * gap   - carpet with safe gap (rocket)
+ * ring  - expanding ring (energy)
+ */
+function createBossHazard(kind, x, z = -9, timer = 70, extra = {}) {
   const mesh = new THREE.Group();
   const materials = [];
-  const addGroundMarker = (geometry, color, opacity, y = 0) => {
+  const accent = boss?.def?.accent || 0xff5a2e;
+  const addGround = (geometry, color, opacity, y = 0) => {
     const material = bossHazardMaterial(color, opacity);
     const marker = new THREE.Mesh(geometry, material);
     marker.rotation.x = -Math.PI / 2;
@@ -2376,110 +2421,211 @@ function createBossHazard(kind, x, z = -9, timer = kind === "lane" ? 74 : 62) {
   };
 
   let core;
-  if (kind === "lane") {
-    core = addGroundMarker(new THREE.PlaneGeometry(3.25, 36), 0xff263d, .34);
-    addGroundMarker(new THREE.PlaneGeometry(.15, 35.4), 0xffe36a, .8, .012).position.x = -1.42;
-    addGroundMarker(new THREE.PlaneGeometry(.15, 35.4), 0xffe36a, .8, .012).position.x = 1.42;
-    for (const offset of [-.7, 0, .7]) {
-      const stripe = addGroundMarker(new THREE.PlaneGeometry(.22, 33), 0xff5c68, .48, .018);
-      stripe.position.x = offset;
+  let radius = 1.55;
+  let halfWidth = 1.6;
+  if (kind === "beam") {
+    halfWidth = extra.halfWidth || 1.55;
+    core = addGround(new THREE.PlaneGeometry(halfWidth * 2, 36), 0xff263d, .34);
+    addGround(new THREE.PlaneGeometry(.14, 35), 0xffe36a, .85, .012).position.x = -halfWidth + .08;
+    addGround(new THREE.PlaneGeometry(.14, 35), 0xffe36a, .85, .012).position.x = halfWidth - .08;
+  } else if (kind === "shell") {
+    radius = extra.radius || 2.15;
+    core = addGround(new THREE.CircleGeometry(radius, 36), 0xffc44f, .42);
+    addGround(new THREE.RingGeometry(radius * .72, radius, 36), 0xffe28a, .9, .018);
+  } else if (kind === "shock") {
+    halfWidth = extra.halfWidth || 3.4;
+    core = addGround(new THREE.PlaneGeometry(halfWidth * 2, 8.5), 0x8de8ff, .4);
+    addGround(new THREE.RingGeometry(1.1, 1.55, 28), 0xb8f4ff, .85, .02);
+    z = PLAYER_Z - .2;
+  } else if (kind === "lock") {
+    radius = extra.radius || 1.25;
+    core = addGround(new THREE.CircleGeometry(radius, 28), 0xd8a5ff, .4);
+    addGround(new THREE.RingGeometry(radius * .7, radius, 28), 0xf0d6ff, .95, .02);
+    const cross = addGround(new THREE.PlaneGeometry(.12, radius * 1.8), 0xffffff, .7, .03);
+    const cross2 = addGround(new THREE.PlaneGeometry(radius * 1.8, .12), 0xffffff, .7, .03);
+    mesh.userData.cross = [cross, cross2];
+  } else if (kind === "rain") {
+    radius = extra.radius || 1.35;
+    core = addGround(new THREE.CircleGeometry(radius, 28), 0xff9d5c, .44);
+    addGround(new THREE.RingGeometry(radius * .75, radius, 28), 0xffd08a, .9, .018);
+  } else if (kind === "gap") {
+    // Full road carpet with a safe gap around x
+    const safe = extra.safeHalf || 1.7;
+    halfWidth = ROAD_HALF;
+    const leftW = Math.max(.4, x + ROAD_HALF - safe);
+    const rightW = Math.max(.4, ROAD_HALF - x - safe);
+    if (leftW > .5) {
+      const left = addGround(new THREE.PlaneGeometry(leftW, 10), 0xff7043, .36);
+      left.position.x = -ROAD_HALF + leftW / 2 - x;
     }
+    if (rightW > .5) {
+      const right = addGround(new THREE.PlaneGeometry(rightW, 10), 0xff7043, .36);
+      right.position.x = ROAD_HALF - rightW / 2 - x;
+    }
+    core = addGround(new THREE.PlaneGeometry(safe * 2, 10), 0x66bb6a, .18);
+    z = PLAYER_Z;
+  } else if (kind === "ring") {
+    radius = extra.radius || 2.4;
+    core = addGround(new THREE.RingGeometry(radius * .55, radius, 40), 0x72f5ff, .55);
+    addGround(new THREE.RingGeometry(radius * .9, radius, 40), 0xb8ffff, .9, .02);
+    x = 0; z = PLAYER_Z;
   } else {
-    core = addGroundMarker(new THREE.CircleGeometry(1.58, 36), 0xff5a2e, .46);
-    addGroundMarker(new THREE.RingGeometry(1.22, 1.52, 36), 0xffd95c, .92, .018);
-    const beaconMat = bossHazardMaterial(0xffd168, .92);
-    const beacon = new THREE.Mesh(new THREE.IcosahedronGeometry(.28, 1), beaconMat);
-    beacon.position.y = .38; beacon.renderOrder = 4;
+    radius = 1.5;
+    core = addGround(new THREE.CircleGeometry(radius, 28), accent, .4);
+  }
+
+  if (kind !== "gap" && kind !== "beam" && kind !== "shock") {
+    const beaconMat = bossHazardMaterial(0xffd168, .9);
+    const beacon = new THREE.Mesh(new THREE.IcosahedronGeometry(.22, 1), beaconMat);
+    beacon.position.y = .36; beacon.renderOrder = 4;
     mesh.add(beacon); materials.push(beaconMat);
     mesh.userData.beacon = beacon;
   }
 
   mesh.position.set(x, .06, z);
   scene.add(mesh);
-  bossHazards.push({ kind, x, z, mesh, core, materials, timer, maxTimer: timer, radius: 1.55 });
+  bossHazards.push({
+    kind, x, z, mesh, core, materials, timer, maxTimer: timer,
+    radius, halfWidth, safeHalf: extra.safeHalf || 0,
+    track: kind === "lock", trackT: kind === "lock" ? Math.floor(timer * .55) : 0,
+    resolved: false,
+  });
 }
 
-/* Boss 攻击两段式:蓄力(预警地标先亮,弹体后发) → 打击。总预警 = 蓄力 + 飞行,躲避靠走位不靠运气 */
-const BOSS_WINDUP = 28;
-const BOSS_FLIGHT = { lane: 60, missile: 50 };
+/* Boss 攻击:预警地标 → 弹体/结算。每位 Boss 主招式不同 */
+const BOSS_WINDUP = 30;
+const BOSS_FLIGHT = { beam: 56, shell: 48, shock: 36, lock: 44, rain: 50, gap: 40, ring: 42 };
+function queueBossShot(kind, x, z, timer, extra) {
+  createBossHazard(kind, x, z, timer, extra);
+  boss.pendingShots.push({ kind, x, z, life: BOSS_FLIGHT[kind] || 50 });
+}
+
 function launchBossAttack() {
   if (!boss) return;
   const core = boss.mesh.userData.bossCore;
   if (core) core.scale.setScalar(1.4);
   addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, mobileDevice ? 12 : 20, .3);
   addImpactRing(boss.mesh.position.x, .2, boss.mesh.position.z + 1, boss.def.accent, 4.2);
-  addShake(.18);
-  const phase = boss.phase || (boss.hp / boss.maxHp <= .4 ? 3 : boss.hp / boss.maxHp <= .7 ? 2 : 1);
+  addShake(.16);
+  const phase = boss.phase || 1;
+  const pattern = boss.attackIndex % 3;
   boss.pendingShots = [];
-  const lane = x => { createBossHazard("lane", x, -12, BOSS_WINDUP + BOSS_FLIGHT.lane); boss.pendingShots.push({ kind: "lane", x, z: -12 }); };
-  const missile = (x, z = rand(-1.4, 2.6)) => { createBossHazard("missile", x, z, BOSS_WINDUP + BOSS_FLIGHT.missile); boss.pendingShots.push({ kind: "missile", x, z }); };
-  const alt = boss.attackIndex % 2;
-  // Phase 3: always layer a second pattern so players must keep moving.
+  const px = player.x;
+
   switch (boss.def.theme) {
-    case "tank":
-      if (!alt) {
-        lane(clamp(Math.round(player.x / 4) * 4, -4, 4));
-        if (phase >= 2) lane(player.x > 0 ? -4 : 4);
-        if (phase >= 3) missile(clamp(player.x, -5, 5), 0);
-        addFloatText(0, 4, -10, phase >= 3 ? "终焉重炮!" : "重炮扫射!", "#ffc75f", 5);
+    case "tank": {
+      // 坦克: 宽幅双线重炮 + 大范围阵地炮弹
+      if (pattern === 0) {
+        queueBossShot("beam", clamp(Math.round(px / 4) * 4, -4, 4), -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.7 });
+        if (phase >= 2) queueBossShot("beam", px > 0 ? -4 : 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.5 });
+        if (phase >= 3) queueBossShot("shell", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.3 });
+        addFloatText(0, 4, -10, phase >= 3 ? "终焉重炮阵列!" : "双线重炮!", "#ffc75f", 5);
+      } else if (pattern === 1) {
+        for (let i = 0; i < 2 + phase; i++) {
+          queueBossShot("shell", clamp(px + rand(-5.5, 5.5), -6.2, 6.2), PLAYER_Z + rand(-1, 1.5), BOSS_WINDUP + 8 * i + BOSS_FLIGHT.shell, { radius: 1.9 + phase * .12 });
+        }
+        addFloatText(0, 4, -8, "阵地炮击!", "#ffb74d", 5);
       } else {
-        for (let i = 0; i < 2 + phase; i++) missile(clamp(player.x + rand(-5, 5), -6.5, 6.5));
-        if (phase >= 3) lane(0);
-        addFloatText(0, 4, -8, "炮击阵列!", "#ff9e55", 5);
+        queueBossShot("beam", -4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
+        queueBossShot("beam", 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
+        if (phase >= 2) queueBossShot("shell", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.0 });
+        addFloatText(0, 4, -8, "夹击炮线 · 中间危险!", "#ffd06b", 5.1);
       }
       break;
-    case "shield":
-      if (!alt) {
-        lane(clamp(player.x, -5, 5));
-        if (phase >= 3) lane(player.x > 0 ? -4 : 4);
-        addFloatText(0, 4, -10, phase >= 3 ? "双线冲锋!" : "盾甲冲锋!", "#8de8ff", 5);
+    }
+    case "shield": {
+      // 盾兵: 正面宽幅冲撞 + 左右震荡波(贴近玩家 Z)
+      if (pattern === 0) {
+        queueBossShot("shock", clamp(px, -4, 4), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.6 + phase * .35 });
+        addFloatText(0, 4, -8, "盾甲冲撞 · 快躲开正面!", "#8de8ff", 5.2);
+      } else if (pattern === 1) {
+        queueBossShot("shock", -3.5, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
+        queueBossShot("shock", 3.5, PLAYER_Z, BOSS_WINDUP + 10 + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
+        if (phase >= 3) queueBossShot("shock", 0, PLAYER_Z, BOSS_WINDUP + 18 + BOSS_FLIGHT.shock, { halfWidth: 2.0 });
+        addFloatText(0, 4, -8, "护盾震荡波!", "#91efff", 5);
       } else {
-        const edge = player.x >= 0 ? 4.5 : -4.5;
-        missile(edge, 0); missile(-edge, 0);
-        if (phase >= 2) missile(0, 0);
-        if (phase >= 3) { missile(2.5, 1.2); missile(-2.5, 1.2); }
-        addFloatText(0, 4, -8, "护盾震荡!", "#91efff", 5);
+        queueBossShot("shock", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 3.5 });
+        if (phase >= 2) queueBossShot("shell", clamp(px + (px >= 0 ? -4 : 4), -6, 6), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 1.6 });
+        addFloatText(0, 4, -8, "蛮力横扫!", "#a5f0ff", 5);
       }
       break;
-    case "sniper":
-      if (!alt) {
-        lane(clamp(player.x, -5.5, 5.5));
-        if (phase >= 3) missile(clamp(player.x + (player.x >= 0 ? -3 : 3), -6, 6), 0);
-        addFloatText(0, 4, -10, "锁定光束!", "#e2b8ff", 5);
+    }
+    case "sniper": {
+      // 狙击: 追踪锁定(先跟着你走再定身) + 安全点网格
+      if (pattern === 0 || pattern === 2) {
+        const locks = phase >= 3 ? 3 : phase >= 2 ? 2 : 1;
+        for (let i = 0; i < locks; i++) {
+          queueBossShot("lock", px + (i - (locks - 1) / 2) * 1.2, PLAYER_Z, BOSS_WINDUP + 6 * i + BOSS_FLIGHT.lock, { radius: 1.2 });
+        }
+        addFloatText(0, 4, -10, locks > 1 ? "多重锁定 · 持续走位!" : "狙击锁定 · 快躲开!", "#e2b8ff", 5.2);
       } else {
-        const safe = Math.floor(rand(0, 4));
-        [-6, -2, 2, 6].forEach((x, i) => { if (i !== safe) missile(x, 0); });
-        if (phase >= 3) lane(clamp(player.x, -4, 4));
-        addFloatText(0, 4, -8, phase >= 3 ? "绝杀网格!" : "多重瞄准!", "#d8a5ff", 5);
+        const slots = [-6, -2, 2, 6];
+        const safe = slots[Math.floor(rand(0, slots.length))];
+        slots.forEach(x => {
+          if (x !== safe) queueBossShot("lock", x, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.lock, { radius: 1.15 });
+        });
+        addFloatText(safe, 4, -8, "安全节点在发光一侧!", "#d8a5ff", 5.2);
       }
       break;
-    case "rocket":
-      if (!alt) {
-        for (let i = 0; i < 3 + phase; i++) missile(rand(-6.5, 6.5));
+    }
+    case "rocket": {
+      // 火箭: 错峰导弹雨 + 缺口地毯炸
+      if (pattern === 0) {
+        for (let i = 0; i < 3 + phase; i++) {
+          queueBossShot("rain", rand(-6.3, 6.3), PLAYER_Z + rand(-1.2, 2), BOSS_WINDUP + i * 7 + BOSS_FLIGHT.rain, { radius: 1.3 });
+        }
         addFloatText(0, 4, -8, "错峰导弹雨!", "#ffad69", 5);
+      } else if (pattern === 1) {
+        const safe = clamp(px + rand(-1.5, 1.5), -4.5, 4.5);
+        queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.gap, { safeHalf: phase >= 3 ? 1.35 : 1.75 });
+        addFloatText(safe, 4, -8, "地毯轰炸 · 钻绿色缺口!", "#ffd06b", 5.3);
       } else {
-        const safe = rand(-5, 5);
-        [-6, -3, 0, 3, 6].forEach(x => { if (Math.abs(x - safe) > (phase >= 3 ? 1.8 : 2.2)) missile(x, 0); });
-        if (phase >= 3) lane(clamp(Math.round(safe / 4) * 4, -4, 4));
-        addFloatText(safe, 4, -8, "地毯轰炸 · 寻找缺口!", "#ffd06b", 5.2);
+        for (let i = 0; i < 2 + phase; i++) queueBossShot("rain", clamp(px + rand(-4, 4), -6, 6), PLAYER_Z, BOSS_WINDUP + i * 5 + BOSS_FLIGHT.rain, { radius: 1.4 });
+        if (phase >= 2) {
+          const safe = px > 0 ? -3 : 3;
+          queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.gap, { safeHalf: 1.5 });
+        }
+        addFloatText(0, 4, -8, "齐射覆盖!", "#ff9d5c", 5);
       }
       break;
-    default:
-      if (!alt) {
-        lane(player.x > 0 ? 4 : -4);
-        if (phase >= 2) lane(player.x > 0 ? -4 : 4);
-        if (phase >= 3) missile(0, 0);
+    }
+    default: {
+      // 能量: 固定切割光束 + 从中心扩散的能环
+      if (pattern === 0) {
+        queueBossShot("beam", px > 0 ? 3.5 : -3.5, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
+        if (phase >= 2) queueBossShot("beam", px > 0 ? -3.5 : 3.5, -12, BOSS_WINDUP + 8 + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
+        if (phase >= 3) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.8 });
         addFloatText(0, 4, -10, "等离子切割!", "#72f5ff", 5);
+      } else if (pattern === 1) {
+        queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.2 + phase * .35 });
+        if (phase >= 2) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + 14 + BOSS_FLIGHT.ring, { radius: 3.4 });
+        addFloatText(0, 4, -8, "扩散能环 · 站到环外!", "#79fbff", 5.2);
       } else {
-        const safe = [-6, -2, 2, 6][Math.floor(rand(0, 4))];
-        [-6, -2, 2, 6].forEach(x => { if (x !== safe) missile(x, 0); });
-        if (phase >= 3) lane(safe > 0 ? -4 : 4);
-        addFloatText(safe, 4, -8, "能量网格 · 安全节点!", "#79fbff", 5.1);
+        [-5, 0, 5].forEach((x, i) => {
+          if (phase < 2 && x === 0) return;
+          queueBossShot("beam", x, -12, BOSS_WINDUP + i * 4 + BOSS_FLIGHT.beam, { halfWidth: 1.15 });
+        });
+        addFloatText(0, 4, -8, "能量栅栏!", "#5ee7ff", 5);
       }
+    }
   }
+
   boss.windupT = BOSS_WINDUP;
   boss.attackIndex++;
-  boss.attackCd = Math.max(84, 210 - boss.number * 8 - (phase - 1) * 28);
+  boss.attackCd = Math.max(90, 200 - boss.number * 6 - (phase - 1) * 24);
+}
+
+function hitByBossHazard(h, p) {
+  if (h.kind === "beam") return Math.abs(p.x - h.x) < h.halfWidth && p.z < 4;
+  if (h.kind === "shock") return Math.abs(p.x - h.x) < h.halfWidth && Math.abs(p.z - PLAYER_Z) < 2.4;
+  if (h.kind === "gap") return Math.abs(p.x - h.x) > h.safeHalf && Math.abs(p.z - PLAYER_Z) < 2.2;
+  if (h.kind === "ring") {
+    const d = Math.hypot(p.x - h.x, p.z - h.z);
+    return d > h.radius * .55 && d < h.radius + .35;
+  }
+  // shell / lock / rain
+  const dx = p.x - h.x, dz = p.z - h.z;
+  return dx * dx + dz * dz < h.radius * h.radius;
 }
 
 function resolveBossHazard(h) {
@@ -2487,18 +2633,18 @@ function resolveBossHazard(h) {
   const unit = heroUnit();
   if (unit) {
     const p = unit.mesh.position;
-    const inside = h.kind === "lane" ? Math.abs(p.x - h.x) < 1.6 : ((p.x - h.x) ** 2 + (p.z - h.z) ** 2 < h.radius ** 2);
-    if (inside) {
+    if (hitByBossHazard(h, p)) {
       hits++;
-      hurtHero(12 + (boss?.number || 1) * 2, "Boss技能命中!", "#ff5264", true, ARMOR_SHARES.boss, "boss");
-      addParticles(p.x, 1.1, p.z, h.kind === "lane" ? "#ff5b68" : "#ff9a5b", 18, .36);
+      const dmg = (h.kind === "shock" || h.kind === "shell" ? 14 : 11) + (boss?.number || 1) * 2;
+      hurtHero(dmg, "Boss技能命中!", "#ff5264", true, ARMOR_SHARES.boss, "boss");
+      addParticles(p.x, 1.1, p.z, "#ff5b68", 16, .34);
     }
   }
   if (hits) {
-    player.hurtT = 18; addShake(.34); flashScreen("#ff4f58", .36);
-    addShockwave(h.x, .08, h.z, h.kind === "lane" ? 0xff4c5d : 0xff914d, h.kind === "lane" ? 4 : 2.5);
+    player.hurtT = 18; addShake(.32); flashScreen("#ff4f58", .34);
+    addShockwave(h.x, .08, h.z, boss?.def?.accent || 0xff4c5d, h.kind === "beam" ? 4 : 2.6);
   } else {
-    addImpactRing(h.x, .08, h.z, h.kind === "lane" ? 0xff4c5d : 0xff914d, h.kind === "lane" ? 3.4 : 2.2);
+    addImpactRing(h.x, .08, h.z, boss?.def?.accent || 0xff914d, h.kind === "ring" ? 4 : 2.2);
   }
 }
 
@@ -2532,10 +2678,12 @@ function updateBoss(t) {
     if (boss.mesh.userData.bossCore) boss.mesh.userData.bossCore.scale.setScalar(1.1 + chargeK * 1.9 + Math.sin(t * 26) * .16);
     if (frame % 4 === 0) addSparks(boss.mesh.position.x + rand(-1.5, 1.5), rand(2.2, 4.4), boss.mesh.position.z + rand(-.5, 1.5), boss.def.accent, 2, .12);
     if (boss.windupT <= 0) {
-      /* 打击瞬间:齐射 + 爆闪 + 卡帧 */
-      const shots = boss.pendingShots || [];
+      /* 打击瞬间:按当前预警位置发射(锁定类会跟着玩家更新) */
       boss.pendingShots = null;
-      for (const s of shots) launchBossProjectile(s.kind, s.x, s.z, BOSS_FLIGHT[s.kind]);
+      for (const h of bossHazards) {
+        if (h.resolved || h.timer <= 0) continue;
+        launchBossProjectile(h.kind, h.x, h.z, Math.max(12, Math.min(BOSS_FLIGHT[h.kind] || 48, h.timer + 4)));
+      }
       addShake(.32); triggerHitStop(2);
       flashScreen(`#${boss.def.accent.toString(16).padStart(6, "0")}`, .28);
       addGlowGhost(boss.mesh.position.x, 2.6, boss.mesh.position.z, boss.def.accent, 4.5);
@@ -2553,11 +2701,20 @@ function updateBoss(t) {
 
   for (const h of bossHazards) {
     h.timer -= timeMul;
-    const k = h.timer / h.maxTimer;
+    // Sniper lock: track player for the first half, then freeze.
+    if (h.track && h.trackT > 0) {
+      h.trackT -= timeMul;
+      h.x += (player.x - h.x) * .12;
+      h.z += (PLAYER_Z - h.z) * .08;
+      h.mesh.position.x = h.x;
+      h.mesh.position.z = h.z;
+    }
+    const k = Math.max(0, h.timer / h.maxTimer);
     const pulse = .72 + Math.sin(h.timer * .55) * .2 + (1 - k) * .28;
-    h.materials.forEach(m => m.opacity = Math.min(1, pulse));
-    h.core.material.opacity = Math.min(.78, .25 + (1 - k) * .58);
-    h.mesh.scale.setScalar(1 + (1 - k) * .12);
+    h.materials.forEach(m => { if (m) m.opacity = Math.min(1, pulse); });
+    if (h.core?.material) h.core.material.opacity = Math.min(.78, .25 + (1 - k) * .58);
+    if (h.kind === "ring") h.mesh.scale.setScalar(.65 + (1 - k) * 1.1);
+    else h.mesh.scale.setScalar(1 + (1 - k) * .1);
     if (h.mesh.userData.beacon) {
       const beacon = h.mesh.userData.beacon;
       beacon.rotation.y += .16 * timeMul;
@@ -2565,29 +2722,30 @@ function updateBoss(t) {
     }
     if (h.timer <= 0 && !h.resolved) { h.resolved = true; resolveBossHazard(h); }
   }
-  bossHazards = bossHazards.filter(h => {
-    if (h.timer <= 0) { disposeBossHazard(h); return false; }
-    return true;
+  compactInPlace(bossHazards, h => {
+    if (h.timer > 0) return true;
+    disposeBossHazard(h);
+    return false;
   });
 
   for (const projectile of bossProjectiles) {
     const progress = 1 - projectile.life / projectile.maxLife;
     projectile.mesh.position.lerp(new THREE.Vector3(projectile.x, .28, projectile.z), .13 + progress * .06);
-    projectile.mesh.rotateZ(.2);
+    projectile.mesh.rotateZ(.18);
     projectile.shellMat.opacity = .48 + Math.sin(t * 18) * .24;
-    projectile.mesh.scale.setScalar(1 + progress * .8);
-    if (frame % 2 === 0) {   // 弹道拖尾残影
+    projectile.mesh.scale.setScalar(1 + progress * .75);
+    if (frame % 2 === 0) {
       const bp = projectile.mesh.position;
-      addGlowGhost(bp.x, bp.y, bp.z, projectile.kind === "lane" ? 0xff5b68 : 0xffb05c, 1.15);
+      addGlowGhost(bp.x, bp.y, bp.z, boss.def.accent, 1.1);
     }
     projectile.life -= timeMul;
   }
-  bossProjectiles = bossProjectiles.filter(projectile => {
+  compactInPlace(bossProjectiles, projectile => {
     if (projectile.life > 0) return true;
-    addParticles(projectile.x, .9, projectile.z, projectile.kind === "lane" ? "#ff586c" : "#ffb05c", mobileDevice ? 12 : 20, .38);
-    addSparks(projectile.x, 1.0, projectile.z, projectile.kind === "lane" ? 0xff8090 : 0xffc06a, mobileDevice ? 8 : 14, .42);
-    addSmoke(projectile.x, 1.2, projectile.z, 2, 1.1);
-    addShockwave(projectile.x, .1, projectile.z, projectile.kind === "lane" ? 0xff4560 : 0xffad4f, projectile.kind === "lane" ? 3.4 : 2.4);
+    addParticles(projectile.x, .9, projectile.z, "#ffb05c", mobileDevice ? 10 : 16, .35);
+    addSparks(projectile.x, 1.0, projectile.z, boss.def.accent, mobileDevice ? 6 : 12, .4);
+    addSmoke(projectile.x, 1.2, projectile.z, 2, 1.0);
+    addShockwave(projectile.x, .1, projectile.z, boss.def.accent, 2.6);
     disposeBossProjectile(projectile);
     return false;
   });
@@ -3094,6 +3252,11 @@ const choiceGridEl = document.getElementById("choiceGrid");
 const prestigePanelEl = document.getElementById("prestigePanel");
 const prestigeNowEl = document.getElementById("prestigeNow");
 const prestigeLaterEl = document.getElementById("prestigeLater");
+const victoryPanelEl = document.getElementById("victoryPanel");
+const victoryEndEl = document.getElementById("victoryEnd");
+const victoryEndlessEl = document.getElementById("victoryEndless");
+const victoryTitleEl = document.getElementById("victoryTitle");
+const victorySubtitleEl = document.getElementById("victorySubtitle");
 let uiPaused = false;
 let currentSkillOptions = [];
 
@@ -3245,6 +3408,64 @@ function openPrestigePanel() {
   prestigePanelEl.classList.remove("hidden");
 }
 
+function openCampaignVictory() {
+  running = false;
+  uiPaused = true;
+  clearInputState();
+  saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
+  saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
+  persistSave();
+  if (victoryTitleEl) victoryTitleEl.textContent = "战役胜利!";
+  if (victorySubtitleEl) {
+    victorySubtitleEl.textContent =
+      `击破全部 ${CAMPAIGN_BOSS_COUNT} 名指挥官 · 得分 ${Math.floor(score)} · 前进 ${Math.floor(distance)}m。可结算本局，或进入更难的无尽冲锋。`;
+  }
+  victoryPanelEl?.classList.remove("hidden");
+  addFloatText(0, 6, -8, "战役通关!", "#ffd86b", 7.5);
+  flashScreen("#ffd86b", .55);
+}
+
+function continueEndlessRun() {
+  victoryPanelEl?.classList.add("hidden");
+  endlessMode = true;
+  nextBossDistance = distance + 500;
+  bossWarning = false;
+  running = true;
+  uiPaused = false;
+  lastLoopTime = performance.now();
+  accumulator = 0;
+  addFloatText(0, 5.5, -10, "无尽冲锋开启 · Boss 会更强!", "#ff8a65", 6.2);
+  flashScreen("#ff8a65", .3);
+}
+
+function endCampaignVictory() {
+  victoryPanelEl?.classList.add("hidden");
+  uiPaused = false;
+  running = false;
+  resultText.innerHTML =
+    "战役胜利!<br>得分 <b style='color:#ffd54f'>" + Math.floor(score) +
+    "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
+    "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>" +
+    "<br><span style='font-size:14px;color:#b8f58b'>已击败全部 " + CAMPAIGN_BOSS_COUNT + " 名专属指挥官</span>";
+  startBtn.textContent = "再来一局";
+  saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
+  saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
+  persistSave();
+  renderProgressText();
+  hud.classList.add("hidden");
+  vitalsHudEl.classList.add("hidden");
+  statusToggle.classList.add("hidden");
+  rankBadgeEl.classList.add("hidden");
+  choicePanelEl.classList.add("hidden");
+  prestigePanelEl.classList.add("hidden");
+  statsPanel.classList.add("hidden");
+  overlay.classList.add("game-over");
+  overlay.classList.remove("hidden");
+}
+
+victoryEndEl?.addEventListener("click", endCampaignVictory);
+victoryEndlessEl?.addEventListener("click", continueEndlessRun);
+
 function performPrestige() {
   saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
   saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
@@ -3327,7 +3548,9 @@ function updateHUD() {
   if (skillLevel(player.skills, "mines") > 0) b += `<span style="color:#ffb22e">地雷 Lv.${skillLevel(player.skills, "mines")}</span>`;
   if (skillLevel(player.skills, "orbit") > 0) b += `<span style="color:#7df6ff">光刃 ×${skillLevel(player.skills, "orbit") + 1}</span>`;
   if (eventHordeT > 0) b += `<span style="color:#ff8a65">敌潮 ${Math.ceil(eventHordeT / 60)}s</span>`;
-  if (boss) b += `<span style="color:#ffd54f">Boss 阶段 ${boss.phase || 1}/3</span>`;
+  if (boss) b += `<span style="color:#ffd54f">${boss.def.name} · 阶段${boss.phase || 1}</span>`;
+  else if (!endlessMode) b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}</span>`;
+  else b += `<span style="color:#ff8a65">无尽 · ${bossCount} 战</span>`;
   b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;
   if (saveData.medals > 0) b += `<span style="color:#ffd86b">司令勋章 ×${saveData.medals}</span>`;
   buffsEl.innerHTML = b;
@@ -3356,6 +3579,7 @@ function renderStatsPanel() {
   rows.push(["本局技能", skillText || "暂无"]);
   rows.push(["司令勋章", `${saveData.medals} / 20`]);
   if (player.prestigeReady) rows.push(["转生", `<button id="statsPrestige" style="padding:5px 12px;border:0;border-radius:12px;background:#d99a27;color:#fff;font-weight:900">授勋转生</button>`]);
+  rows.push(["战役进度", endlessMode ? `无尽冲锋 · 已过 ${bossCount} 战` : `${Math.min(bossCount, CAMPAIGN_BOSS_COUNT)} / ${CAMPAIGN_BOSS_COUNT} Boss`]);
   rows.push(["最高Boss", saveData.highestBoss]);
   rows.push(["历史最佳", `${saveData.bestScore}分 / ${saveData.bestDistance}m`]);
   statsContent.innerHTML = rows.map(([title, value]) => `<div class="stat-row"><span class="stat-title">${title}</span><b>${value}</b></div>`).join("");
@@ -3469,8 +3693,9 @@ function startGame() {
   createHero();
   frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
   combo = 0; comboTimer = 0; critT = 0; shake = 0;
-  bossCount = 0; nextBossDistance = 500; bossWarning = false;
+  bossCount = 0; nextBossDistance = 500; bossWarning = false; endlessMode = false;
   eventIndex = 0; nextEventAt = 180; eventHordeT = 0;
+  victoryPanelEl?.classList.add("hidden");
   cameraFollowX = 0; screenFlashT = 0;
   screenFlashEl.style.opacity = "0"; speedFxEl.style.opacity = "0";
   spawnEnemyCd = 60; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
@@ -3515,6 +3740,7 @@ function endGame() {
   rankBadgeEl.classList.add("hidden");
   choicePanelEl.classList.add("hidden");
   prestigePanelEl.classList.add("hidden");
+  victoryPanelEl?.classList.add("hidden");
   statsPanel.classList.add("hidden"); uiPaused = false;
   overlay.classList.add("game-over");
   overlay.classList.remove("hidden");

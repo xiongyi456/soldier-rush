@@ -245,10 +245,10 @@
     <span style="color:#ff8177">火箭筒</span>
     <span style="color:#7df6ff">激光枪</span>
   </div>
-  <p class="rules"><b style="color:#8bc34a">新兵一路晋升到司令</b> · 每500米挑战专属Boss<br>
-     <b style="color:#8bc34a">选择发光门与技能卡</b>构筑火力 · 打爆武器箱获得补给<br>
-     <b style="color:#fbc02d">左右滑动</b>躲开地刺、地雷、电磁区和敌军<br>
-     司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
+  <p class="rules"><b style="color:#8bc34a">战役共 5 个专属 Boss</b>（500m / 1000m …）· 通关可结算或无尽冲锋<br>
+      <b style="color:#8bc34a">选择发光门与技能卡</b>构筑火力 · 打爆武器箱获得补给<br>
+      <b style="color:#fbc02d">左右滑动</b>躲开地刺、地雷、电磁区和敌军<br>
+      司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
   <div class="big" id="resultText"></div>
   <p id="progressText" class="progress-text"></p>
   <button id="startBtn">开始游戏</button>
@@ -273,6 +273,17 @@
     <div class="prestige-actions">
       <button id="prestigeNow">授勋转生</button>
       <button id="prestigeLater" class="secondary">继续本局</button>
+    </div>
+  </div>
+</div>
+
+<div id="victoryPanel" class="hidden">
+  <div class="choice-card-wrap">
+    <h2 id="victoryTitle">战役胜利</h2>
+    <p id="victorySubtitle">你已击败 5 名专属指挥官，完成司令之路主线。</p>
+    <div class="prestige-actions">
+      <button id="victoryEnd">领取胜利 · 结算</button>
+      <button id="victoryEndless" class="secondary">进入无尽冲锋</button>
     </div>
   </div>
 </div>
