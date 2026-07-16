@@ -1069,18 +1069,21 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function addParticles(x, y, z, color, n = 10, spd = 0.22) {
   const cap = quality.particleCap;
-  for (let i = 0; i < n && particles.length < cap; i++) {
+  // Prefer short-lived hits over infinite confetti during dense combat.
+  const room = Math.max(0, cap - particles.length);
+  const count = Math.min(n, room, quality.level === "low" ? 8 : mobileDevice ? 12 : 18);
+  for (let i = 0; i < count; i++) {
     const m = particleMeshPool.acquire();
     m.visible = true;
     m.material = pMat(color);
     m.position.set(x, y, z);
-    m.scale.setScalar(rand(0.75, 1.75));
+    m.scale.setScalar(rand(0.65, 1.45));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
     particles.push({
       mesh: m,
-      vx: rand(-spd, spd), vy: rand(0.05, spd * 1.6), vz: rand(-spd, spd),
+      vx: rand(-spd, spd), vy: rand(0.05, spd * 1.5), vz: rand(-spd, spd),
       rx: rand(-.18, .18), ry: rand(-.18, .18), rz: rand(-.18, .18),
-      life: rand(22, 42),
+      life: rand(14, 28),
     });
     scene.add(m);
   }
@@ -1461,7 +1464,7 @@ function spawnEnemyGroup() {
   }
 }
 
-/* 敌人击碎:按兵种颜色炸出方块碎片 */
+/* 敌人击碎:走对象池 + 严格上限，避免后期满屏碎片卡顿 */
 function shatterEnemy(e) {
   const ep = e.mesh.position;
   const colors = e.type === "gunner" ? ["#704aa0", "#ff6685", "#2f3640"] :
@@ -1469,16 +1472,20 @@ function shatterEnemy(e) {
                  e.type === "shield" ? ["#607d8b", "#b0bec5", "#2f3640"] :
                  e.type === "heavy"  ? ["#8e1b1b", "#5c1212", "#2f3640"] :
                                        ["#d93030", "#2f3640", "#ffcc99"];
-  const n = e.type === "heavy" ? 26 : 16;
-  const hMul = e.type === "heavy" ? 1.6 : 1;
+  const want = e.type === "heavy" || e.elite ? 10 : e.type === "fodder" ? 5 : 7;
+  const room = Math.max(0, quality.particleCap - particles.length);
+  const n = Math.min(want, room, quality.level === "low" ? 5 : 10);
+  const hMul = e.type === "heavy" ? 1.35 : 1;
   for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(particleGeo, pMat(colors[i % colors.length]));
-    m.position.set(ep.x + rand(-0.4, 0.4), rand(0.2, 1.6) * hMul, ep.z + rand(-0.3, 0.3));
-    m.scale.setScalar(rand(0.8, 2.6));
+    const m = particleMeshPool.acquire();
+    m.visible = true;
+    m.material = pMat(colors[i % colors.length]);
+    m.position.set(ep.x + rand(-0.35, 0.35), rand(0.25, 1.35) * hMul, ep.z + rand(-0.28, 0.28));
+    m.scale.setScalar(rand(0.7, 1.7));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
     particles.push({
-      mesh: m, vx: rand(-0.3, 0.3), vy: rand(0.1, 0.38), vz: rand(-0.25, 0.25),
-      rx: rand(-.2,.2), ry: rand(-.2,.2), rz: rand(-.2,.2), life: rand(25, 50)
+      mesh: m, vx: rand(-0.26, 0.26), vy: rand(0.1, 0.32), vz: rand(-0.22, 0.22),
+      rx: rand(-.2, .2), ry: rand(-.2, .2), rz: rand(-.2, .2), life: rand(12, 22),
     });
     scene.add(m);
   }
@@ -2079,16 +2086,24 @@ function fireUnitWeapon(unit, p) {
   const damage = standardProjectileDamage();
   let dirs = inheritedShotDirections();
   if (def.type === "smg") dirs = dirs.map(vx => vx + rand(-.018, .018));
+  // Rockets are fat AOE shells — cap volleys so late game is punchy, not confetti lawnmower.
+  if (def.type === "rocket") {
+    if (dirs.length > 5) {
+      const step = Math.ceil(dirs.length / 5);
+      dirs = dirs.filter((_, i) => i % step === 0).slice(0, 5);
+    }
+  }
 
   unit.fireCd = effectiveFireInterval();
   unit.mesh.userData.recoil = 1;
   if (unit.tier >= 4 && frame % 3 === 0) {
     addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.35 : 1.0);
-    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 5 : 3, .14);
+    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 4 : 2, .12);
   }
   addMuzzleFlash(p.x + .1, p.z - 1.15);
   const blastLv = skillLevel(player.skills, "blast");
-  const rocketLike = def.type === "rocket" || unit.tier >= 5;
+  // Only true rockets explode. Laser/sniper stay pierce — readable power, not full-screen clear.
+  const isRocket = def.type === "rocket";
   for (const vx of dirs) {
     const mesh = bulletMeshPool.acquire();
     mesh.visible = true;
@@ -2104,46 +2119,71 @@ function fireUnitWeapon(unit, p) {
       mesh, weaponId: unit.weaponId, type: def.type, vx, dmg: damage,
       px: mesh.position.x, pz: mesh.position.z, speed: def.speed,
       pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 1 + Math.floor(unit.tier / 2) : 1) + skillLevel(player.skills, "pierce"),
-      radius: rocketLike
-        ? (def.radius || 1.15) * (1 + blastLv * .08)
-        : 0,
-      blastMul: 1 + blastLv * .08,
-      starburst: rocketLike,
+      radius: isRocket ? (def.radius || 1.15) * (1 + blastLv * .1) : 0,
+      blastMul: 1 + blastLv * .1,
+      starburst: isRocket,
       hitIds: new Set(),
     });
   }
 }
 
 let lastExplosionShakeFrame = -999;
+let explosionCountThisFrame = 0;
+let lastExplosionFrame = -1;
 function explodeProjectile(b, x, z, primaryTarget = null) {
-  const radius = b.radius || 2.8;
-  addParticles(x, 1.1, z, "#ff8a5c", quality.level === "low" ? 10 : 16, .38);
-  addSparks(x, 1.2, z, 0xffc06a, mobileDevice ? 6 : 12, .42);
-  addSmoke(x, 1.4, z, 2, radius * .42);
-  addShockwave(x, .08, z, 0xff7a55, radius * 1.15);
-  // Throttle explosion camera punch: multi-rocket frames otherwise stack trauma hard.
-  if (frame - lastExplosionShakeFrame > 8) {
-    addShake(.08);
-    flashScreen("#ff8a5c", .12);
+  if (lastExplosionFrame !== frame) {
+    lastExplosionFrame = frame;
+    explosionCountThisFrame = 0;
+  }
+  explosionCountThisFrame++;
+  const radius = (b.radius || 2.8) * (explosionCountThisFrame === 1 ? 1 : .78);
+  // Soft-cap FX when many rockets detonate same frame; damage still applies (weaker splash).
+  if (explosionCountThisFrame <= 2) {
+    addParticles(x, 1.1, z, "#ff8a5c", quality.level === "low" ? 6 : 10, .32);
+    addSparks(x, 1.2, z, 0xffc06a, mobileDevice ? 4 : 8, .38);
+    if (explosionCountThisFrame === 1) {
+      addSmoke(x, 1.4, z, 2, radius * .38);
+      addShockwave(x, .08, z, 0xff7a55, radius * 1.1);
+    }
+  }
+  if (explosionCountThisFrame <= 3 && frame - lastExplosionShakeFrame > 10) {
+    addShake(.1);
+    flashScreen("#ff8a5c", .14);
     lastExplosionShakeFrame = frame;
   }
-  const primaryMul = 1;
-  const splashMul = .38 * (b.blastMul || 1);
+  // Primary hit hits hard; splash is for chip — not a second full clear.
+  const stackFade = explosionCountThisFrame <= 3 ? 1 : .55;
+  const primaryMul = 1.15 * (b.blastMul || 1) * stackFade;
+  const splashMul = .2 * (b.blastMul || 1) * stackFade;
+  let splashKills = 0;
   for (const e of enemies) {
     if (e.dead) continue;
     const dx = e.mesh.position.x - x, dz = e.mesh.position.z - z;
-    if (dx * dx + dz * dz <= radius * radius) {
-      const mul = e.id === primaryTarget ? primaryMul * (b.blastMul || 1) : splashMul;
+    const distSq = dx * dx + dz * dz;
+    if (distSq <= radius * radius) {
+      const isPrimary = e.id === primaryTarget;
+      const falloff = isPrimary ? 1 : Math.max(.35, 1 - Math.sqrt(distSq) / radius);
+      const mul = (isPrimary ? primaryMul : splashMul) * falloff;
       e.hp -= b.dmg * mul;
       e.mesh.userData.hit = 1;
       drawHpLabel(e);
-      if (e.hp <= 0) killEnemy(e);
+      if (e.hp <= 0) {
+        killEnemy(e);
+        if (!isPrimary) splashKills++;
+      }
     }
+  }
+  if (splashKills >= 3) {
+    addFloatText(x, 3.6, z, `溅射 ×${splashKills}`, "#ffb74d", 4.6);
+    addShake(.06);
   }
   if (boss) {
     const dx = boss.mesh.position.x - x, dz = boss.mesh.position.z - z;
-    if (dx * dx + dz * dz <= radius * radius) {
-      const mul = primaryTarget === "boss" ? primaryMul * (b.blastMul || 1) : splashMul;
+    const distSq = dx * dx + dz * dz;
+    if (distSq <= radius * radius) {
+      const isPrimary = primaryTarget === "boss";
+      const falloff = isPrimary ? 1 : Math.max(.4, 1 - Math.sqrt(distSq) / radius);
+      const mul = (isPrimary ? primaryMul : splashMul * .85) * falloff;
       damageBoss(b.dmg * mul, x, z);
     }
   }
@@ -2356,6 +2396,7 @@ function beginBossBattle() {
     phase: 1, phaseAnnounced: { 2: false, 3: false },
     summoned65: false, summoned35: false,
     introT: 110, windupT: 0, pendingShots: null,
+    pendingDmg: 0, lastDmgFloatFrame: 0,
   };
   bossBarEl.classList.remove("hidden");
   const chapter = endlessMode ? `无尽#${bossNumber}` : `${bossNumber}/${CAMPAIGN_BOSS_COUNT}`;
@@ -2396,12 +2437,29 @@ function updateBossBar() {
 }
 
 function damageBoss(amount, x, z) {
-  if (!boss || boss.introT > 0) return;
+  if (!boss || boss.introT > 0 || amount <= 0) return;
   boss.hp -= amount;
   boss.mesh.userData.hit = 1;
-  addParticles(x, 2.2, z, boss.def.accent, 5, .18);
-  if (frame % 3 === 0) updateBossBar();
-  if (boss.hp <= 0) defeatBoss();
+  // Batch float numbers so multi-rocket frames read as one punch, not laggy spam.
+  boss.pendingDmg = (boss.pendingDmg || 0) + amount;
+  if (!boss.lastDmgFloatFrame || frame - boss.lastDmgFloatFrame >= 4) {
+    const shown = Math.round(boss.pendingDmg);
+    if (shown > 0) {
+      addFloatText(x, 3.2, z, `-${shown}`, "#ffd86b", shown > 40 ? 4.2 : 3.2);
+      boss.pendingDmg = 0;
+      boss.lastDmgFloatFrame = frame;
+    }
+  }
+  // Throttle hit confetti; always refresh bar so HP never "freezes then teleports".
+  if (frame % 4 === 0) addParticles(x, 2.2, z, boss.def.accent, 3, .16);
+  updateBossBar();
+  if (boss.hp <= 0) {
+    if (boss.pendingDmg > 0) {
+      addFloatText(x, 3.4, z, `-${Math.round(boss.pendingDmg)}`, "#ffd86b", 4.4);
+      boss.pendingDmg = 0;
+    }
+    defeatBoss();
+  }
 }
 
 function unlockBossWeapon(bossNumber) {

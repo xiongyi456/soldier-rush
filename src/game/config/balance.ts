@@ -58,11 +58,11 @@ export interface RewardCore<TReward = unknown> {
 
 /** Hits needed if a single projectile lands. Multi-shot / dense stages compensated in enemyHealth. */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [2.4, 3.6],
-  normal: [3.8, 6.0],
-  gunner: [7, 10],
-  shield: [9, 13],
-  heavy: [14, 20],
+  fodder: [2.8, 4.2],
+  normal: [4.4, 6.8],
+  gunner: [8, 11.5],
+  shield: [10, 14.5],
+  heavy: [17, 24],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -96,7 +96,8 @@ export function enemyHealth(
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
   // Dense multi-shot stages often land several bullets on one fodder; pad harder than log2*0.42.
   const shots = Math.max(1, shotCount);
-  const volley = 1 + Math.log2(shots) * .72 + Math.max(0, shots - 3) * .08;
+  // Late multi-shot (7–13) must feel chunky, not one-frame lawnmower.
+  const volley = 1 + Math.log2(shots) * .9 + Math.max(0, shots - 3) * .12 + Math.max(0, shots - 7) * .08;
   return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley));
 }
 
@@ -133,7 +134,9 @@ export function resolveHeroDamage(vitals: HeroVitals, profile: DamageProfile, di
 
 export function bossHealth(bossNumber: number, estimatedDps: number): number {
   const dps = Math.max(1, estimatedDps);
-  const base = 240 * Math.pow(1.35, Math.max(0, bossNumber - 1));
-  const target = Math.max(base, dps * BOSS_TARGET_SECONDS);
-  return Math.round(Math.max(dps * 10, Math.min(dps * 15, target)));
+  const base = 280 * Math.pow(1.38, Math.max(0, bossNumber - 1));
+  // Slightly longer late bosses so HP bar ticks visibly instead of melting in one volley.
+  const seconds = BOSS_TARGET_SECONDS + Math.min(4, Math.max(0, bossNumber - 2) * .8);
+  const target = Math.max(base, dps * seconds);
+  return Math.round(Math.max(dps * 11, Math.min(dps * 16, target)));
 }

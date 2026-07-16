@@ -70,9 +70,9 @@ describe("combat pacing", () => {
 
   it("uses archetype hit-count bands", () => {
     const damage = 2;
-    expect(enemyHealth("fodder", damage, 1)).toBe(8);
-    expect(enemyHealth("gunner", damage, .5)).toBe(17);
-    expect(enemyHealth("heavy", damage, .5)).toBe(34);
+    expect(enemyHealth("fodder", damage, 1)).toBe(9);
+    expect(enemyHealth("gunner", damage, .5)).toBe(20);
+    expect(enemyHealth("heavy", damage, .5)).toBe(41);
   });
 
   it("scales enemy HP with multi-shot volleys so fodder is not one-shot", () => {
@@ -82,17 +82,17 @@ describe("combat pacing", () => {
       const fodder = enemyHealth("fodder", damage, .5, count);
       const volley = damage * Math.min(count, 3);
       // Need more than one multi-hit volley even after weapon upgrades.
-      expect(fodder / volley).toBeGreaterThanOrEqual(1.05);
-      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(5);
-      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(17);
+      expect(fodder / volley).toBeGreaterThanOrEqual(1.15);
+      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(6);
+      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(20);
     }
   });
 
-  it("targets a ten to fifteen second boss window", () => {
+  it("targets an eleven to sixteen second boss window", () => {
     const dps = 100;
     const hp = bossHealth(3, dps);
-    expect(hp / dps).toBeGreaterThanOrEqual(10);
-    expect(hp / dps).toBeLessThanOrEqual(15);
+    expect(hp / dps).toBeGreaterThanOrEqual(11);
+    expect(hp / dps).toBeLessThanOrEqual(16);
   });
 
   it("keeps the boss window bounded across all weapon stages", () => {
@@ -100,8 +100,8 @@ describe("combat pacing", () => {
     for (let stage = 1; stage <= 6; stage += 1) {
       const dps = projectileDamage(stage, shots[stage - 1]) * shots[stage - 1] * 60 / fireInterval(cadences[stage - 1]);
       const duration = bossHealth(stage, dps) / dps;
-      expect(duration).toBeGreaterThanOrEqual(10);
-      expect(duration).toBeLessThanOrEqual(15.05);
+      expect(duration).toBeGreaterThanOrEqual(11);
+      expect(duration).toBeLessThanOrEqual(16.05);
     }
   });
 });
