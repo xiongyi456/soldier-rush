@@ -308,9 +308,33 @@ window.addEventListener("DOMContentLoaded", function () {
     if (loading) loading.classList.add("done");
   }
 
+  function clearCachesAndReload() {
+    var done = function () {
+      var url = new URL(location.href);
+      url.searchParams.set("v", String(Date.now()));
+      location.replace(url.toString());
+    };
+    if (window.__soldierRushClearCaches) {
+      window.__soldierRushClearCaches().finally(done);
+      return;
+    }
+    if ("caches" in window) {
+      caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      }).then(function () {
+        if (!("serviceWorker" in navigator)) return;
+        return navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        });
+      }).finally(done);
+      return;
+    }
+    done();
+  }
+
   function markFailed(detail) {
     button.disabled = false;
-    button.textContent = "点我重试刷新";
+    button.textContent = "清除缓存并刷新";
     setStatus(detail || "加载失败，请检查网络后刷新");
     if (loading) {
       var card = loading.querySelector(".loading-card");
@@ -328,8 +352,8 @@ window.addEventListener("DOMContentLoaded", function () {
       markFailed("请勿直接打开 html 文件。在电脑运行 npm run dev，手机访问同一 Wi‑Fi 下的地址。");
       return;
     }
-    if (button.textContent.indexOf("重试") >= 0) {
-      location.reload();
+    if (button.textContent.indexOf("清除缓存") >= 0 || button.textContent.indexOf("重试") >= 0) {
+      clearCachesAndReload();
       return;
     }
     setStatus("还在下载 3D 资源，请再等几秒…");
@@ -351,9 +375,9 @@ window.addEventListener("DOMContentLoaded", function () {
     }
     if (waited === 3000) setStatus("手机首次加载较慢，请继续等待…");
     if (waited === 8000) setStatus("仍在加载，请保持页面打开…");
-    if (waited >= 20000) {
+    if (waited >= 25000) {
       clearInterval(timer);
-      markFailed("超过 20 秒仍未就绪。请强制刷新，或清除本站缓存后再试。");
+      markFailed("超过 25 秒仍未就绪。多半是旧缓存，请点「清除缓存并刷新」。");
     }
   }, 250);
 

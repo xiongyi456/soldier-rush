@@ -1,12 +1,38 @@
 import { registerSW } from "virtual:pwa-register";
 import "./style.css";
 
-// Avoid blocking first paint on mobile; SW updates in background.
+// Avoid blocking first paint on mobile; force SW refresh so phones leave stale caches.
 try {
-  registerSW({ immediate: false });
+  registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      // New deploy available — reload once to pick up fresh JS/CSS.
+      location.reload();
+    },
+    onOfflineReady() {
+      // Cached for offline; no-op.
+    },
+  });
 } catch {
   // PWA optional on plain static hosts.
 }
+
+// One-shot recovery: if a previous SW left the app stuck, clear site caches after long failures.
+async function clearSiteCaches(): Promise<void> {
+  try {
+    if (!("caches" in window)) return;
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => caches.delete(key)));
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(reg => reg.unregister()));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+(globalThis as typeof globalThis & { __soldierRushClearCaches?: () => Promise<void> }).__soldierRushClearCaches = clearSiteCaches;
 
 type BootGlobal = typeof globalThis & {
   __soldierRushReady?: boolean;
@@ -27,8 +53,14 @@ function showBootError(detail: string): void {
   const button = document.getElementById("startBtn") as HTMLButtonElement | null;
   if (button) {
     button.disabled = false;
-    button.textContent = "点我重试刷新";
-    button.onclick = () => location.reload();
+    button.textContent = "清除缓存并刷新";
+    button.onclick = () => {
+      void clearSiteCaches().finally(() => {
+        const url = new URL(location.href);
+        url.searchParams.set("v", String(Date.now()));
+        location.replace(url.toString());
+      });
+    };
   }
 }
 
@@ -59,25 +91,12 @@ void bootstrapNativeShell();
 
 // Load the heavy game module after first paint so the loading UI can show on mobile.
 const boot = () => {
-  void import("./game/game.ts")
-    .then(() => {
-      (globalThis as BootGlobal).__soldierRushReady = true;
-      const button = document.getElementById("startBtn") as HTMLButtonElement | null;
-      if (button) {
-        button.disabled = false;
-        if (!button.textContent || button.textContent.includes("加载") || button.textContent.includes("资源")) {
-          button.textContent = "开始游戏";
-        }
-      }
-      const status = document.getElementById("loadStatus");
-      if (status) status.textContent = "";
-      document.getElementById("loadingScreen")?.classList.add("done");
-    })
-    .catch((error: unknown) => {
-      console.error("Soldier Rush failed to boot", error);
-      const detail = error instanceof Error ? error.message : String(error);
-      showBootError(detail);
-    });
+  // game.ts sets __soldierRushReady after the first rendered frame.
+  void import("./game/game.ts").catch((error: unknown) => {
+    console.error("Soldier Rush failed to boot", error);
+    const detail = error instanceof Error ? error.message : String(error);
+    showBootError(detail);
+  });
 };
 
 if (document.readyState === "loading") {
