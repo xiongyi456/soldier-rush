@@ -56,13 +56,13 @@ export interface RewardCore<TReward = unknown> {
   magnetRadius: number;
 }
 
-/** Hits needed if a single projectile lands. Multi-shot is compensated in enemyHealth. */
+/** Hits needed if a single projectile lands. Multi-shot / dense stages compensated in enemyHealth. */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [1.4, 2.2],
-  normal: [2.6, 4.4],
-  gunner: [5.5, 8],
-  shield: [7, 10],
-  heavy: [11, 16],
+  fodder: [2.4, 3.6],
+  normal: [3.8, 6.0],
+  gunner: [7, 10],
+  shield: [9, 13],
+  heavy: [14, 20],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -94,8 +94,9 @@ export function enemyHealth(
 ): number {
   const [minHits, maxHits] = ENEMY_HIT_RANGES[archetype];
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
-  // Extra durability when the player fires many projectiles (partial multi-hits expected).
-  const volley = 1 + Math.log2(Math.max(1, shotCount)) * .42;
+  // Dense multi-shot stages often land several bullets on one fodder; pad harder than log2*0.42.
+  const shots = Math.max(1, shotCount);
+  const volley = 1 + Math.log2(shots) * .72 + Math.max(0, shots - 3) * .08;
   return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley));
 }
 

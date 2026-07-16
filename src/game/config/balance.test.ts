@@ -70,9 +70,9 @@ describe("combat pacing", () => {
 
   it("uses archetype hit-count bands", () => {
     const damage = 2;
-    expect(enemyHealth("fodder", damage, 1)).toBe(5);
-    expect(enemyHealth("gunner", damage, .5)).toBe(14);
-    expect(enemyHealth("heavy", damage, .5)).toBe(27);
+    expect(enemyHealth("fodder", damage, 1)).toBe(8);
+    expect(enemyHealth("gunner", damage, .5)).toBe(17);
+    expect(enemyHealth("heavy", damage, .5)).toBe(34);
   });
 
   it("scales enemy HP with multi-shot volleys so fodder is not one-shot", () => {
@@ -81,9 +81,10 @@ describe("combat pacing", () => {
       const damage = projectileDamage(stage, count);
       const fodder = enemyHealth("fodder", damage, .5, count);
       const volley = damage * Math.min(count, 3);
-      expect(fodder / volley).toBeGreaterThanOrEqual(.55);
-      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(3);
-      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(13);
+      // Need more than one multi-hit volley even after weapon upgrades.
+      expect(fodder / volley).toBeGreaterThanOrEqual(1.05);
+      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(5);
+      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(17);
     }
   });
 

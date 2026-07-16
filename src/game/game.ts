@@ -42,11 +42,11 @@ const WEAPON_DEFS = {
 };
 const WEAPON_ORDER = Object.keys(WEAPON_DEFS);
 const BOSS_DEFS = [
-  { name: "坦克指挥官", color: 0x496d42, accent: 0xffc44f, unlock: "smg", theme: "tank", signature: "双线重炮 / 阵地炮击" },
-  { name: "盾甲巨兵",   color: 0x526f87, accent: 0x8de8ff, unlock: "shotgun", theme: "shield", signature: "正面冲撞 / 护盾震荡波" },
-  { name: "狙击机甲",   color: 0x604f84, accent: 0xd8a5ff, unlock: "sniper", theme: "sniper", signature: "追踪锁定 / 安全点网格" },
-  { name: "火箭巨兽",   color: 0x8b3e36, accent: 0xff9d5c, unlock: "rocket", theme: "rocket", signature: "导弹雨 / 缺口地毯炸" },
-  { name: "能量守卫",   color: 0x256f78, accent: 0x72f5ff, unlock: "laser", theme: "energy", signature: "切割光束 / 扩散能环" },
+  { name: "铁罐头大佐", color: 0x4a7a3e, accent: 0xffc44f, unlock: "smg", theme: "tank", signature: "双线压路炮 · 别站直线!" },
+  { name: "铁饼队长",   color: 0x5a7a96, accent: 0x8de8ff, unlock: "shotgun", theme: "shield", signature: "正面冲撞 · 盾震波" },
+  { name: "红点幽灵",   color: 0x5a4a78, accent: 0xff6b9d, unlock: "sniper", theme: "sniper", signature: "红点锁定 · 持续走位" },
+  { name: "爆米花将军", color: 0x9a4538, accent: 0xff9d5c, unlock: "rocket", theme: "rocket", signature: "导弹雨 · 钻绿色缺口" },
+  { name: "棱镜哨兵",   color: 0x1f7a86, accent: 0x72f5ff, unlock: "laser", theme: "energy", signature: "切割光刀 · 扩环封路" },
 ];
 /** 战役主线共 5 个 Boss；击败第 5 个后可选胜利结算或无尽冲锋 */
 const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
@@ -310,27 +310,27 @@ for (let i = 0; i < 16; i++) {
   trees.push(t);
 }
 
-/* ================= 3D 士兵模型 (精致动画电影风) ================= */
-/* 约 4 头高：头更小、躯干更挺、腿更长，脸精致但不幼龄 */
+/* ================= 3D 士兵模型 (Q 版大头 chibi · 豆丁风) ================= */
+/* ~2.5 头身：大头圆眼、短肢粗轮廓，贴近热门休閒射击可读性 */
 const soldierGeo = {
-  torso: new THREE.CapsuleGeometry(0.34, 0.38, 8, 14),
-  belly: new THREE.SphereGeometry(0.32, 16, 12),
-  limb: new THREE.CapsuleGeometry(0.11, 0.34, 6, 10),
-  head: new THREE.SphereGeometry(0.36, 24, 18),
-  helmet: new THREE.SphereGeometry(0.38, 20, 14, 0, Math.PI * 2, 0, Math.PI * .56),
-  hand: new THREE.SphereGeometry(0.12, 12, 10),
-  boot: new THREE.CapsuleGeometry(0.12, 0.1, 5, 10),
-  cheek: new THREE.SphereGeometry(0.08, 12, 10),
-  nose: new THREE.SphereGeometry(0.05, 10, 8),
-  eye: new THREE.SphereGeometry(0.075, 14, 12),
-  pupil: new THREE.SphereGeometry(0.042, 12, 10),
-  shine: new THREE.SphereGeometry(0.018, 8, 6),
-  brow: new THREE.CapsuleGeometry(0.015, 0.1, 3, 6),
-  neck: new THREE.CapsuleGeometry(0.1, 0.08, 4, 8),
-  gunBody: new THREE.CapsuleGeometry(0.07, 0.48, 5, 8),
-  gunTip: new THREE.CapsuleGeometry(0.04, 0.2, 4, 8),
+  torso: new THREE.CapsuleGeometry(0.38, 0.22, 8, 14),
+  belly: new THREE.SphereGeometry(0.36, 16, 12),
+  limb: new THREE.CapsuleGeometry(0.13, 0.22, 6, 10),
+  head: new THREE.SphereGeometry(0.52, 24, 18),
+  helmet: new THREE.SphereGeometry(0.56, 20, 14, 0, Math.PI * 2, 0, Math.PI * .58),
+  hand: new THREE.SphereGeometry(0.15, 12, 10),
+  boot: new THREE.CapsuleGeometry(0.14, 0.08, 5, 10),
+  cheek: new THREE.SphereGeometry(0.1, 12, 10),
+  nose: new THREE.SphereGeometry(0.045, 10, 8),
+  eye: new THREE.SphereGeometry(0.11, 14, 12),
+  pupil: new THREE.SphereGeometry(0.06, 12, 10),
+  shine: new THREE.SphereGeometry(0.028, 8, 6),
+  brow: new THREE.CapsuleGeometry(0.018, 0.12, 3, 6),
+  neck: new THREE.CapsuleGeometry(0.12, 0.05, 4, 8),
+  gunBody: new THREE.CapsuleGeometry(0.09, 0.52, 5, 8),
+  gunTip: new THREE.CapsuleGeometry(0.05, 0.22, 4, 8),
   cube: new THREE.BoxGeometry(1, 1, 1),
-  shadow: new THREE.CircleGeometry(0.58, 22),
+  shadow: new THREE.CircleGeometry(0.62, 22),
 };
 const sharedSoldierGeometries = new Set(Object.values(soldierGeo));
 const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x1a3048, transparent: true, opacity: 0.16, depthWrite: false });
@@ -373,109 +373,111 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   const uniformMat = mat(mainColor);
   const midMat = mat(mid);
   const darkMat = mat(dark);
-  const skinMat = mat(0xf0c2a0);
-  const blushMat = mat(0xf0a090);
-  const trouserMat = mat(0x243648);
-  const bootMat = mat(0x1c2836);
+  const skinMat = mat(0xffd6b0);
+  const blushMat = mat(0xff8fa0);
+  const trouserMat = mat(0x1e2a38);
+  const bootMat = mat(0x141c28);
   const gunMat = mat(0x2a3440);
   const accentMat = mat(weapon.color);
   const glowMat = new THREE.MeshBasicMaterial({ color: weapon.color, toneMapped: false });
-  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x141c2a), .6).getHex());
-  const whiteMat = mat(0xfff8f2);
-  const irisMat = mat(0x243850);
+  const hairMat = mat(0x3a3a48);
+  const whiteMat = mat(0xffffff);
+  const irisMat = mat(0x1a1a22);
+  const outlineMat = mat(0x1a1420);
 
   const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
-  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .015; shadow.scale.set(1, .65, 1);
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .015; shadow.scale.set(1.1, .7, 1.1);
   g.add(shadow);
 
-  /* 腿：更长、更挺，靴形清晰 */
+  /* 短腿厚靴 · chibi */
   const legL = new THREE.Group(), legR = new THREE.Group();
-  legL.position.set(-.16, .62, 0); legR.position.set(.16, .62, 0);
+  legL.position.set(-.18, .42, 0); legR.position.set(.18, .42, 0);
   rig.add(legL, legR);
-  part(soldierGeo.limb, trouserMat, 0, -.22, 0, 1.05, 1.12, 1.05, legL);
-  part(soldierGeo.limb, trouserMat, 0, -.22, 0, 1.05, 1.12, 1.05, legR);
-  const bootL = part(soldierGeo.boot, bootMat, 0, -.52, -.08, 1.2, .95, 1.55, legL);
-  const bootR = part(soldierGeo.boot, bootMat, 0, -.52, -.08, 1.2, .95, 1.55, legR);
+  part(soldierGeo.limb, trouserMat, 0, -.14, 0, 1.2, .85, 1.2, legL);
+  part(soldierGeo.limb, trouserMat, 0, -.14, 0, 1.2, .85, 1.2, legR);
+  const bootL = part(soldierGeo.boot, bootMat, 0, -.32, -.06, 1.35, 1.0, 1.7, legL);
+  const bootR = part(soldierGeo.boot, bootMat, 0, -.32, -.06, 1.35, 1.0, 1.7, legR);
   bootL.rotation.x = bootR.rotation.x = Math.PI / 2;
 
-  /* 躯干：倒三角运动型，不是圆球肚子 */
-  part(soldierGeo.belly, midMat, 0, .82, .02, 1.05, .75, .95);
-  part(soldierGeo.torso, uniformMat, 0, 1.12, 0, 1.15, 1.05, .92);
-  part(soldierGeo.cube, darkMat, 0, 1.18, -.28, .48, .42, .1);
+  /* 圆滚躯干 + 粗描边感肩块 */
+  part(soldierGeo.belly, midMat, 0, .58, .04, 1.15, .9, 1.05);
+  part(soldierGeo.torso, uniformMat, 0, .82, 0, 1.25, .95, 1.0);
+  part(soldierGeo.cube, outlineMat, 0, .82, .28, .55, .7, .08);
   if (!lowPowerDevice) {
-    part(soldierGeo.cube, darkMat, 0, .88, 0, .62, .1, .38);
-    part(soldierGeo.hand, accentMat, 0, 1.2, -.3, .38, .38, .16);
+    part(soldierGeo.cube, darkMat, 0, .62, 0, .7, .12, .42);
+    part(soldierGeo.hand, accentMat, 0, .9, -.32, .42, .42, .18);
   }
   for (const side of [-1, 1]) {
-    part(soldierGeo.hand, uniformMat, side * .36, 1.38, 0, .95, .75, .9);
+    part(soldierGeo.hand, uniformMat, side * .42, 1.0, 0, 1.15, .9, 1.05);
   }
-  part(soldierGeo.neck, skinMat, 0, 1.48, 0, 1, 1, 1);
+  part(soldierGeo.neck, skinMat, 0, 1.05, 0, 1.15, .7, 1.15);
 
-  /* 头：更小更精致 + 军帽轮廓 */
-  const head = part(soldierGeo.head, skinMat, 0, 1.82, -.02, 1.05, 1.02, 1.0);
-  part(soldierGeo.helmet, hairMat, 0, 1.96, .02, 1.1, .95, 1.08);
-  part(soldierGeo.cheek, hairMat, 0, 2.02, .06, 1.15, .5, .8);
-  part(soldierGeo.cube, darkMat, 0, 1.78, -.28, .62, .06, .28);
-  part(soldierGeo.hand, accentMat, 0, 1.92, -.3, .42, .28, .14);
+  /* 大头 · 豆丁脸 */
+  const HEAD_Y = 1.42;
+  const head = part(soldierGeo.head, skinMat, 0, HEAD_Y, -.02, 1.08, 1.05, 1.05);
+  part(soldierGeo.helmet, hairMat, 0, HEAD_Y + .22, .04, 1.12, .92, 1.1);
+  part(soldierGeo.cheek, hairMat, 0, HEAD_Y + .28, .08, 1.2, .55, .85);
+  part(soldierGeo.cube, darkMat, 0, HEAD_Y - .02, -.38, .72, .08, .32);
+  part(soldierGeo.hand, accentMat, 0, HEAD_Y + .12, -.4, .48, .32, .16);
 
   let face = null;
   if (!lowPowerDevice || tier >= 2) {
     for (const side of [-1, 1]) {
-      part(soldierGeo.eye, whiteMat, side * .12, 1.84, -.32, 1.05, 1.2, .65);
-      part(soldierGeo.pupil, irisMat, side * .12, 1.835, -.38, 1.0, 1.1, .55);
-      part(soldierGeo.shine, whiteMat, side * .1, 1.86, -.4, 1.15, 1.15, 1);
-      const brow = part(soldierGeo.brow, hairMat, side * .12, 1.94, -.34, 1.15, 1, 1);
-      brow.rotation.z = side * -.18;
-      part(soldierGeo.cheek, blushMat, side * .22, 1.76, -.24, .55, .35, .3);
+      part(soldierGeo.eye, whiteMat, side * .16, HEAD_Y + .02, -.42, 1.25, 1.35, .7);
+      part(soldierGeo.pupil, irisMat, side * .16, HEAD_Y + .015, -.5, 1.15, 1.2, .6);
+      part(soldierGeo.shine, whiteMat, side * .12, HEAD_Y + .05, -.54, 1.3, 1.3, 1);
+      const brow = part(soldierGeo.brow, hairMat, side * .16, HEAD_Y + .16, -.44, 1.2, 1, 1);
+      brow.rotation.z = side * -.22;
+      part(soldierGeo.cheek, blushMat, side * .28, HEAD_Y - .12, -.3, .7, .45, .35);
     }
-    part(soldierGeo.nose, skinMat, 0, 1.78, -.38, .75, .85, .85);
-    face = part(new THREE.TorusGeometry(.065, .012, 5, 12, Math.PI * .75), hairMat, 0, 1.7, -.35, 1, .6, 1);
+    part(soldierGeo.nose, skinMat, 0, HEAD_Y - .06, -.5, .7, .8, .8);
+    face = part(new THREE.TorusGeometry(.09, .016, 5, 12, Math.PI * .7), hairMat, 0, HEAD_Y - .2, -.46, 1, .55, 1);
     face.rotation.z = Math.PI;
     for (const side of [-1, 1]) {
-      part(soldierGeo.cheek, skinMat, side * .34, 1.82, 0, .7, .9, .55);
+      part(soldierGeo.cheek, skinMat, side * .42, HEAD_Y, 0, .85, 1.0, .6);
     }
   }
 
-  /* 军衔阶段：干净徽章，少堆叠 */
+  /* 军衔阶段：肩章 / 帽徽 / 光环 — 越打越潮 */
   if (tier >= 2) {
     for (const side of [-1, 1]) {
-      part(soldierGeo.hand, accentMat, side * .4, 1.4, -.02, .85, .7, .85);
+      part(soldierGeo.hand, accentMat, side * .48, 1.02, -.02, .95, .75, .95);
     }
-    part(soldierGeo.hand, glowMat, 0, 1.22, -.32, .35, .35, .18);
+    part(soldierGeo.hand, glowMat, 0, .92, -.34, .4, .4, .2);
   }
   if (tier >= 3) {
-    part(soldierGeo.hand, accentMat, 0, 2.12, 0, .55, .4, .55);
-    part(soldierGeo.cube, darkMat, 0, 1.1, .3, .55, .65, .08);
+    part(soldierGeo.hand, accentMat, 0, HEAD_Y + .48, 0, .6, .45, .6);
+    part(soldierGeo.cube, darkMat, 0, .78, .35, .6, .7, .08);
   }
   if (tier >= 4) {
-    const aura = new THREE.Mesh(new THREE.RingGeometry(.48, .66, 28), new THREE.MeshBasicMaterial({
-      color: weapon.color, transparent: true, opacity: .18, side: THREE.DoubleSide,
+    const aura = new THREE.Mesh(new THREE.RingGeometry(.52, .72, 28), new THREE.MeshBasicMaterial({
+      color: weapon.color, transparent: true, opacity: .2, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
     }));
     aura.rotation.x = -Math.PI / 2; aura.position.y = .03; g.add(aura); g.userData.aura = aura;
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(.32, .028, 8, 24), glowMat);
-    halo.position.set(0, 2.18, 0); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(.38, .032, 8, 24), glowMat);
+    halo.position.set(0, HEAD_Y + .55, 0); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
   }
   if (tier >= 5) {
-    part(soldierGeo.hand, glowMat, 0, 2.2, 0, .85, .4, .85);
-    const cape = part(soldierGeo.cube, accentMat, 0, 1.05, .38, .55, .85, .05);
-    cape.rotation.x = -.18;
+    part(soldierGeo.hand, glowMat, 0, HEAD_Y + .58, 0, .9, .42, .9);
+    const cape = part(soldierGeo.cube, accentMat, 0, .72, .42, .6, .75, .05);
+    cape.rotation.x = -.2;
   }
 
-  /* 手臂：比例正常，手略大 */
+  /* 短臂大手 · 抱枪 */
   const armL = new THREE.Group(), armR = new THREE.Group();
-  armL.position.set(-.4, 1.36, 0); armR.position.set(.4, 1.36, 0);
-  const armBase = weaponId === "rocket" ? .88 : weaponId === "sniper" ? 1.12 : weaponId === "shotgun" ? 1.0 : 1.05;
+  armL.position.set(-.48, .98, 0); armR.position.set(.48, .98, 0);
+  const armBase = weaponId === "rocket" ? .75 : weaponId === "sniper" ? 1.0 : weaponId === "shotgun" ? .9 : .95;
   armL.rotation.x = armR.rotation.x = armBase;
   rig.add(armL, armR);
-  part(soldierGeo.limb, uniformMat, 0, -.2, 0, 1.05, .95, 1.05, armL);
-  part(soldierGeo.limb, uniformMat, 0, -.2, 0, 1.05, .95, 1.05, armR);
-  part(soldierGeo.hand, skinMat, 0, -.42, 0, 1.15, 1.15, 1.15, armL);
-  part(soldierGeo.hand, skinMat, 0, -.42, 0, 1.15, 1.15, 1.15, armR);
+  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.15, .85, 1.15, armL);
+  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.15, .85, 1.15, armR);
+  part(soldierGeo.hand, skinMat, 0, -.34, 0, 1.35, 1.35, 1.35, armL);
+  part(soldierGeo.hand, skinMat, 0, -.34, 0, 1.35, 1.35, 1.35, armR);
 
-  /* 武器：略夸张但干净 */
+  /* 夸张大枪 · Q 版可读 */
   const gunRig = new THREE.Group();
-  gunRig.position.set(.1, 1.2, -.55); rig.add(gunRig);
+  gunRig.position.set(.12, .88, -.52); rig.add(gunRig);
   const gunBody = (sx, sy, sz, z = 0) => part(soldierGeo.gunBody, gunMat, 0, 0, z, sx, sy, sz, gunRig);
   const gunAccent = (sx, sy, sz, z) => part(soldierGeo.gunTip, accentMat, 0, 0, z, sx, sy, sz, gunRig);
   if (weaponId === "smg") {
@@ -552,11 +554,11 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   }
   if (ud.halo) {
     ud.halo.rotation.z += .045;
-    ud.halo.position.y = 2.18 + Math.sin(t * 4 + ud.phase) * .04;
+    ud.halo.position.y = 1.97 + Math.sin(t * 4 + ud.phase) * .04;
   }
   if (ud.head && !ud.mixer) {
-    ud.head.rotation.y = Math.sin(t * 1.2 + ud.phase) * .03;
-    ud.head.position.y = 1.82 + Math.sin(t * 2.4 + ud.phase) * .01;
+    ud.head.rotation.y = Math.sin(t * 1.2 + ud.phase) * .04;
+    ud.head.position.y = 1.42 + Math.sin(t * 2.4 + ud.phase) * .015;
   }
   if (ud.mergeT > 0) {
     ud.mergeT = Math.max(0, ud.mergeT - .035);
@@ -942,7 +944,7 @@ let particles = [];      // {mesh, vx, vy, vz, life}
 let floatTexts = [];     // {sprite, life}
 let playerMines = [];    // 感应地雷 {mesh, x, z, life, dmg, radius}
 let orbitBlades = [];    // 环绕光刃 {mesh, angle, radius, dmgCd}
-let spawnEnemyCd = 60, spawnCrateCd = 150;
+let spawnEnemyCd = 110, spawnCrateCd = 150;
 let gates = [], spawnGateCd = 500;          // 选择门
 let traps = [], spawnTrapCd = 320;           // 小范围陷阱
 let drones = [];
@@ -970,7 +972,7 @@ function applyRankInsignia(mesh, rank) {
   const rig = mesh.userData.rig;
   if (!rig) return;
   const group = new THREE.Group();
-  group.position.set(-.22, 1.28, -.34);
+  group.position.set(-.26, .95, -.38);
   const badgeMat = new THREE.MeshToonMaterial({
     color: rank >= 12 ? 0xffd66b : 0xc7e7ff,
     gradientMap: TOON_RAMP,
@@ -1219,13 +1221,13 @@ function createPlayerUnit(weaponId = "rifle", rank = player.level, x = player.x,
   const def = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
   const visualStage = RANK_DEFS[Math.max(0, rank - 1)].visualStage + 1;
   const weaponStage = weaponStageForRank(rank);
-  // 军服配色随军衔递进:海军蓝 → 精钢灰 → 司令级克制金
-  const HERO_TIER_COLORS = [0x27466b, 0x2d5680, 0x3f6f96, 0x5688a8, 0xc7a24c];
+  // 豆丁军服：海军蓝 → 青钢 → 司令金（Q 版高饱和）
+  const HERO_TIER_COLORS = [0x2a5a8a, 0x3470a8, 0x4a8cc4, 0x68a8d8, 0xe0b84a];
   const color = HERO_TIER_COLORS[clamp(visualStage - 1, 0, 4)];
   const mesh = makeSoldier(color, weaponId, visualStage);
   applyRankInsignia(mesh, rank);
-  applyRimFresnel(mesh, 0x9fd8ff, 2.3, .8);
-  mesh.scale.setScalar(1.12 + visualStage * .045);
+  applyRimFresnel(mesh, 0xffe8a0, 2.1, .95);
+  mesh.scale.setScalar(1.2 + visualStage * .05);
   mesh.position.set(x, 0, z);
   scene.add(mesh);
   const maxArmor = heroMaxArmor(rank);
@@ -1295,7 +1297,23 @@ function evolveHero(nextRank = player.level) {
   const text = previousWeapon === hero.weaponId ? `${rankName(nextRank)} 晋升!` : `${rankName(nextRank)} · ${def.label} 进化!`;
   addFloatText(position.x, 4.4, position.z, text, def.css, 6.2);
   addShake(.35); flashScreen(def.css, .42);
+  // Weapon stage / multi-shot just jumped — retune living trash so they are not instantly melted.
+  if (previousWeapon !== hero.weaponId) retuneLivingEnemies();
   return true;
+}
+
+function retuneLivingEnemies() {
+  const shotDamage = standardProjectileDamage();
+  const shotCount = Math.max(1, inheritedShotDirections().length);
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const ratio = e.maxHp > 0 ? Math.max(0, e.hp / e.maxHp) : 1;
+    const base = enemyHealth(e.type, shotDamage, .55, shotCount);
+    const nextMax = Math.max(1, Math.ceil(base * (e.elite ? 1.85 : 1)));
+    e.maxHp = nextMax;
+    e.hp = Math.max(1, Math.ceil(nextMax * ratio));
+    drawHpLabel(e);
+  }
 }
 
 function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
@@ -1385,8 +1403,14 @@ function spawnEnemyGroup() {
   const cap = mobileDevice ? 24 : 32;
   const remaining = Math.max(0, cap - enemies.length);
   if (!remaining) return;
-  const weakWave = Math.random() < .2;
-  const desired = weakWave ? 5 + Math.floor(Math.random() * 4) : distance >= 500 ? 3 + Math.floor(Math.random() * 5) : 2 + Math.floor(Math.random() * 4);
+  // Early game: fewer fodder packs so the opening fight is not a slog.
+  const early = distance < 280;
+  const weakWave = Math.random() < (early ? .08 : .2);
+  const desired = weakWave
+    ? (early ? 3 + Math.floor(Math.random() * 2) : 5 + Math.floor(Math.random() * 4))
+    : distance >= 500 ? 3 + Math.floor(Math.random() * 5)
+    : early ? 1 + Math.floor(Math.random() * 2)
+    : 2 + Math.floor(Math.random() * 4);
   const groupSize = Math.min(desired, remaining);
   const baseX = rand(-ROAD_HALF + 2.2, ROAD_HALF - 2.2);
   const formation = Math.floor(Math.random() * 3);
@@ -2136,8 +2160,7 @@ function clearHazardsForBoss() {
 }
 
 /**
- * Boss silhouettes inspired by arcade mech bosses (Sky Force / 雷电 style):
- * readable mass, glowing core, theme-unique hardpoints — not just a big soldier.
+ * Q 版「公路五害」Boss：大色块剪影 + 发光弱点核（魂骑士/Brotato 可读性）。
  */
 function makeBossModel(def, bossNumber) {
   const root = new THREE.Group();
@@ -2146,14 +2169,16 @@ function makeBossModel(def, bossNumber) {
 
   const bodyMat = new THREE.MeshToonMaterial({ color: def.color, gradientMap: TOON_RAMP });
   const armorMat = new THREE.MeshToonMaterial({
-    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .28,
+    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .32,
   });
   const darkMat = new THREE.MeshToonMaterial({
-    color: new THREE.Color(def.color).multiplyScalar(.45).getHex(), gradientMap: TOON_RAMP,
+    color: new THREE.Color(def.color).multiplyScalar(.4).getHex(), gradientMap: TOON_RAMP,
   });
-  const metalMat = new THREE.MeshToonMaterial({ color: 0x3a4654, gradientMap: TOON_RAMP });
+  const metalMat = new THREE.MeshToonMaterial({ color: 0x2e3848, gradientMap: TOON_RAMP });
+  const skinMat = new THREE.MeshToonMaterial({ color: 0xffd6b0, gradientMap: TOON_RAMP });
   const coreMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false });
-  const glowMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false, transparent: true, opacity: .9 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false, transparent: true, opacity: .92 });
+  const outlineMat = new THREE.MeshToonMaterial({ color: 0x1a1420, gradientMap: TOON_RAMP });
 
   const add = (geo, mat, x, y, z, sx = 1, sy = 1, sz = 1, parent = rig) => {
     const m = new THREE.Mesh(geo, mat);
@@ -2166,101 +2191,95 @@ function makeBossModel(def, bossNumber) {
   const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = .02;
-  shadow.scale.set(2.4, 1.4, 2.4);
+  shadow.scale.set(2.8, 1.5, 2.8);
   root.add(shadow);
 
-  // Shared mech torso + legs (chunky arcade boss base)
-  add(new THREE.CapsuleGeometry(.55, .7, 8, 14), bodyMat, 0, 1.35, 0, 1.15, 1.05, 1.0);
-  add(new THREE.SphereGeometry(.48, 16, 12), armorMat, 0, 1.55, -.15, 1.1, .7, .9);
-  add(new THREE.CapsuleGeometry(.22, .55, 6, 10), darkMat, -.38, .55, .05, 1.1, 1.0, 1.1);
-  add(new THREE.CapsuleGeometry(.22, .55, 6, 10), darkMat, .38, .55, .05, 1.1, 1.0, 1.1);
-  add(new THREE.SphereGeometry(.32, 12, 10), metalMat, -.4, .12, -.08, 1.3, .7, 1.5);
-  add(new THREE.SphereGeometry(.32, 12, 10), metalMat, .4, .12, -.08, 1.3, .7, 1.5);
-  add(new THREE.SphereGeometry(.42, 14, 12), bodyMat, 0, 2.15, 0, 1.05, .95, 1.0);
-  // Visor eyes
-  add(new THREE.SphereGeometry(.1, 10, 8), glowMat, -.14, 2.2, -.38, 1.2, .9, .6);
-  add(new THREE.SphereGeometry(.1, 10, 8), glowMat, .14, 2.2, -.38, 1.2, .9, .6);
-  const core = add(new THREE.IcosahedronGeometry(.22, 1), coreMat, 0, 1.45, -.55, 1, 1, 1);
+  // 公共 chibi 底座：大头 + 短胖身 + 粗腿
+  add(new THREE.SphereGeometry(.72, 18, 14), bodyMat, 0, 1.05, 0, 1.2, 1.0, 1.1);
+  add(new THREE.SphereGeometry(.55, 16, 12), bodyMat, 0, 1.85, 0, 1.15, 1.1, 1.1);
+  add(new THREE.SphereGeometry(.18, 10, 8), glowMat, -.2, 1.92, -.48, 1.3, 1.1, .7);
+  add(new THREE.SphereGeometry(.18, 10, 8), glowMat, .2, 1.92, -.48, 1.3, 1.1, .7);
+  const core = add(new THREE.IcosahedronGeometry(.28, 1), coreMat, 0, 1.15, -.55, 1, 1, 1);
   core.userData.isBossCore = true;
-
   for (const side of [-1, 1]) {
-    add(new THREE.SphereGeometry(.28, 12, 10), armorMat, side * .72, 1.75, 0, 1.15, .95, 1.1);
+    add(new THREE.CapsuleGeometry(.28, .35, 6, 10), darkMat, side * .42, .42, .05, 1.2, 1, 1.2);
+    add(new THREE.SphereGeometry(.32, 12, 10), metalMat, side * .45, .1, -.05, 1.4, .75, 1.5);
   }
 
   if (def.theme === "tank") {
-    // Twin barrels + blocky turret — heavy silhouette
-    const turret = add(new THREE.BoxGeometry(1.5, .45, 1.1), armorMat, 0, 2.05, .1, 1, 1, 1);
-    turret.rotation.y = 0;
+    // 铁罐头大佐：圆罐头盖 + 双炮当“耳朵”
+    add(new THREE.CylinderGeometry(1.05, 1.15, .55, 20), armorMat, 0, 2.35, 0, 1, 1, 1);
+    add(new THREE.CylinderGeometry(.35, .4, .25, 16), glowMat, 0, 2.7, 0, 1, 1, 1);
     for (const side of [-1, 1]) {
-      const cannon = add(new THREE.CylinderGeometry(.14, .2, 1.9, 12), metalMat, side * .42, 2.05, -.95, 1, 1, 1);
+      const cannon = add(new THREE.CylinderGeometry(.16, .22, 1.7, 12), metalMat, side * .75, 2.15, -.7, 1, 1, 1);
       cannon.rotation.x = Math.PI / 2;
-      add(new THREE.SphereGeometry(.18, 10, 8), glowMat, side * .42, 2.05, -1.85, 1, 1, 1);
+      cannon.rotation.z = side * .15;
+      add(new THREE.SphereGeometry(.2, 10, 8), glowMat, side * .75, 2.15, -1.55, 1, 1, 1);
+      add(new THREE.BoxGeometry(.55, .5, 1.5), metalMat, side * 1.0, .35, .1, 1, 1, 1);
     }
-    add(new THREE.BoxGeometry(1.8, .25, 1.4), darkMat, 0, .95, .15, 1, 1, 1);
-    // Tread blocks
-    for (const side of [-1, 1]) {
-      add(new THREE.BoxGeometry(.45, .55, 1.6), metalMat, side * .85, .35, .1, 1, 1, 1);
-    }
+    add(new THREE.BoxGeometry(1.6, .3, 1.3), darkMat, 0, .85, .2, 1, 1, 1);
   } else if (def.theme === "shield") {
-    // Giant frontal disc shield + hammer arms
-    const shield = add(new THREE.CylinderGeometry(1.15, 1.15, .22, 24), armorMat, 0, 1.4, -.95, 1, 1, 1);
+    // 铁饼队长：半人高圆盾挡脸
+    const shield = add(new THREE.CylinderGeometry(1.35, 1.35, .28, 28), armorMat, 0, 1.45, -.9, 1, 1, 1);
     shield.rotation.x = Math.PI / 2;
-    add(new THREE.RingGeometry(.35, .7, 28), glowMat, 0, 1.4, -1.08, 1, 1, 1);
+    add(new THREE.RingGeometry(.4, .85, 32), glowMat, 0, 1.45, -1.08, 1, 1, 1);
+    add(new THREE.SphereGeometry(.22, 12, 10), coreMat, 0, 1.45, -1.12, 1, 1, 1);
     for (const side of [-1, 1]) {
-      add(new THREE.CapsuleGeometry(.18, .7, 6, 10), bodyMat, side * .95, 1.2, -.1, 1, 1, 1);
-      add(new THREE.SphereGeometry(.32, 12, 10), metalMat, side * 1.15, .75, -.25, 1.2, 1, 1.2);
+      add(new THREE.SphereGeometry(.38, 12, 10), metalMat, side * 1.05, .85, -.15, 1.2, 1.1, 1.2);
     }
-    add(new THREE.BoxGeometry(1.2, .9, .35), darkMat, 0, 1.35, .45, 1, 1, 1);
+    add(new THREE.BoxGeometry(1.1, .85, .4), darkMat, 0, 1.2, .45, 1, 1, 1);
   } else if (def.theme === "sniper") {
-    // Tall lean frame + oversized rail cannon and optic
-    add(new THREE.CapsuleGeometry(.18, 1.1, 6, 10), bodyMat, 0, 1.7, 0, .85, 1.2, .85);
-    const barrel = add(new THREE.CylinderGeometry(.1, .16, 3.2, 12), metalMat, .55, 1.7, -1.2, 1, 1, 1);
+    // 红点幽灵：斗篷 + 头顶大红准星
+    add(new THREE.ConeGeometry(1.0, 2.0, 8), darkMat, 0, 1.6, .15, 1.1, 1.15, 1.1);
+    const cape = add(new THREE.BoxGeometry(1.6, 1.4, .12), outlineMat, 0, 1.2, .55, 1, 1, 1);
+    cape.rotation.x = .15;
+    const barrel = add(new THREE.CylinderGeometry(.12, .18, 2.8, 12), metalMat, .6, 1.55, -1.0, 1, 1, 1);
     barrel.rotation.x = Math.PI / 2;
-    add(new THREE.SphereGeometry(.28, 12, 10), glowMat, .55, 1.95, -.35, 1.2, 1.2, 1.2);
-    add(new THREE.TorusGeometry(.22, .05, 8, 18), coreMat, .55, 1.95, -.35, 1, 1, 1);
-    add(new THREE.BoxGeometry(.5, .35, .9), armorMat, -.55, 1.55, .1, 1, 1, 1);
-    // Antenna / targeting fins
-    for (const side of [-1, 1]) {
-      const fin = add(new THREE.BoxGeometry(.08, .7, .35), armorMat, side * .55, 2.45, .1, 1, 1, 1);
-      fin.rotation.z = side * .25;
-    }
+    add(new THREE.SphereGeometry(.42, 14, 12), glowMat, 0, 2.65, 0, 1.15, 1.15, 1.15);
+    add(new THREE.TorusGeometry(.32, .06, 8, 20), coreMat, 0, 2.65, 0, 1, 1, 1);
+    add(new THREE.RingGeometry(.08, .18, 16), coreMat, 0, 2.65, -.4, 1, 1, 1);
   } else if (def.theme === "rocket") {
-    // Wide missile pods / bomber silhouette
+    // 爆米花将军：导弹仓大肚子 + 导弹辫
+    add(new THREE.SphereGeometry(.85, 16, 14), armorMat, 0, 1.15, 0, 1.35, 1.15, 1.2);
     for (const side of [-1, 1]) {
-      const pod = add(new THREE.CapsuleGeometry(.35, .9, 8, 12), armorMat, side * .95, 1.55, .15, 1, 1, 1.15);
-      pod.rotation.z = side * .12;
-      for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
-        const tube = add(new THREE.CylinderGeometry(.09, .09, .55, 10), coreMat,
-          side * .95 + (col - .5) * .28, 1.35 + row * .28, -.55, 1, 1, 1);
+      const pod = add(new THREE.CapsuleGeometry(.38, .85, 8, 12), armorMat, side * 1.05, 1.55, .1, 1, 1, 1.1);
+      pod.rotation.z = side * .18;
+      for (let i = 0; i < 3; i++) {
+        const tube = add(new THREE.CylinderGeometry(.1, .1, .6, 10), coreMat,
+          side * 1.05, 1.25 + i * .28, -.5, 1, 1, 1);
         tube.rotation.x = Math.PI / 2;
       }
+      // 导弹辫子
+      const braid = add(new THREE.CapsuleGeometry(.12, .7, 6, 8), glowMat, side * .55, 2.35, .1, 1, 1, 1);
+      braid.rotation.z = side * .5;
     }
-    add(new THREE.BoxGeometry(1.4, .35, .8), darkMat, 0, 1.9, .25, 1, 1, 1);
-    // Back exhausts
     for (const side of [-1, 1]) {
-      add(new THREE.ConeGeometry(.22, .55, 10), glowMat, side * .35, 1.2, .75, 1, 1, 1).rotation.x = -Math.PI / 2;
+      add(new THREE.ConeGeometry(.2, .5, 10), glowMat, side * .4, 1.0, .8, 1, 1, 1).rotation.x = -Math.PI / 2;
     }
   } else {
-    // Energy guardian: floating rings + crystal core crown
+    // 棱镜哨兵：悬浮环 + 棱镜灯塔
     for (let i = 0; i < 3; i++) {
-      const ring = add(new THREE.TorusGeometry(.75 + i * .22, .05, 8, 36), glowMat, 0, 1.5, .1, 1, 1, 1);
-      ring.rotation.set(Math.PI / 2 + i * .15, i * .5, i * .3);
+      const ring = add(new THREE.TorusGeometry(.85 + i * .25, .06, 8, 36), glowMat, 0, 1.45, .05, 1, 1, 1);
+      ring.rotation.set(Math.PI / 2 + i * .12, i * .4, i * .25);
       root.userData.energyRings ||= [];
       root.userData.energyRings.push(ring);
     }
-    add(new THREE.OctahedronGeometry(.35, 0), coreMat, 0, 2.55, 0, 1, 1.2, 1);
+    add(new THREE.OctahedronGeometry(.48, 0), coreMat, 0, 2.55, 0, 1, 1.25, 1);
+    add(new THREE.OctahedronGeometry(.22, 0), glowMat, 0, 3.05, 0, 1, 1, 1);
     for (const side of [-1, 1]) {
-      const wing = add(new THREE.BoxGeometry(.15, 1.1, .55), armorMat, side * .85, 1.7, .2, 1, 1, 1);
-      wing.rotation.z = side * .4;
+      const wing = add(new THREE.BoxGeometry(.12, 1.25, .6), armorMat, side * .95, 1.65, .15, 1, 1, 1);
+      wing.rotation.z = side * .45;
     }
-    add(new THREE.TorusGeometry(.5, .06, 8, 24), glowMat, 0, 1.45, -.5, 1, 1, 1);
+    add(new THREE.TorusGeometry(.55, .07, 8, 24), glowMat, 0, 1.35, -.45, 1, 1, 1);
   }
 
-  // Floating aura disc
+  // 少量肤色下巴，强化 Q 人感
+  add(new THREE.SphereGeometry(.22, 10, 8), skinMat, 0, 1.55, -.35, 1.1, .7, .8);
+
   const aura = new THREE.Mesh(
-    new THREE.RingGeometry(.9, 1.25, 36),
+    new THREE.RingGeometry(1.0, 1.4, 36),
     new THREE.MeshBasicMaterial({
-      color: def.accent, transparent: true, opacity: .28, side: THREE.DoubleSide,
+      color: def.accent, transparent: true, opacity: .3, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
     }),
   );
@@ -2269,13 +2288,12 @@ function makeBossModel(def, bossNumber) {
   root.add(aura);
   root.userData.aura = aura;
 
-  // Dummy joints so animateWalk bob/sway works without breaking the silhouette
   const legL = new THREE.Group(), legR = new THREE.Group();
   const armL = new THREE.Group(), armR = new THREE.Group();
   const gunRig = new THREE.Group();
-  legL.position.set(-.35, .55, 0); legR.position.set(.35, .55, 0);
-  armL.position.set(-.7, 1.7, 0); armR.position.set(.7, 1.7, 0);
-  gunRig.position.set(0, 1.4, -.5);
+  legL.position.set(-.4, .45, 0); legR.position.set(.4, .45, 0);
+  armL.position.set(-.75, 1.5, 0); armR.position.set(.75, 1.5, 0);
+  gunRig.position.set(0, 1.25, -.5);
   rig.add(legL, legR, armL, armR, gunRig);
   root.userData.rig = rig;
   root.userData.legs = [legL, legR];
@@ -2298,8 +2316,8 @@ function makeBossModel(def, bossNumber) {
     if (o.isMesh && o.material && o.material.isMeshToonMaterial) tintSet.add(o.material);
   });
   root.userData.tintMats = [...tintSet];
-  root.scale.setScalar(1.85);
-  applyRimFresnel(root, def.accent, 2.0, 1.05);
+  root.scale.setScalar(1.75);
+  applyRimFresnel(root, def.accent, 1.9, 1.1);
   return root;
 }
 
@@ -2653,73 +2671,73 @@ function launchBossAttack() {
         queueBossShot("beam", clamp(Math.round(px / 4) * 4, -4, 4), -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.7 });
         if (phase >= 2) queueBossShot("beam", px > 0 ? -4 : 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.5 });
         if (phase >= 3) queueBossShot("shell", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.3 });
-        addFloatText(0, 4, -10, phase >= 3 ? "终焉重炮阵列!" : "双线重炮!", "#ffc75f", 5);
+        addFloatText(0, 4, -10, phase >= 3 ? "罐头终焉压路!" : "铁罐头双线炮!", "#ffc75f", 5);
       } else if (pattern === 1) {
         for (let i = 0; i < 2 + phase; i++) {
           queueBossShot("shell", clamp(px + rand(-5.5, 5.5), -6.2, 6.2), PLAYER_Z + rand(-1, 1.5), BOSS_WINDUP + 8 * i + BOSS_FLIGHT.shell, { radius: 1.9 + phase * .12 });
         }
-        addFloatText(0, 4, -8, "阵地炮击!", "#ffb74d", 5);
+        addFloatText(0, 4, -8, "大佐阵地炮击!", "#ffb74d", 5);
       } else {
         queueBossShot("beam", -4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
         queueBossShot("beam", 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
         if (phase >= 2) queueBossShot("shell", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.0 });
-        addFloatText(0, 4, -8, "夹击炮线 · 中间危险!", "#ffd06b", 5.1);
+        addFloatText(0, 4, -8, "夹击压路 · 中间危险!", "#ffd06b", 5.1);
       }
       break;
     }
     case "shield": {
-      // 盾兵: 正面宽幅冲撞 + 左右震荡波(贴近玩家 Z)
+      // 铁饼队长: 正面冲撞 + 盾震波
       if (pattern === 0) {
         queueBossShot("shock", clamp(px, -4, 4), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.6 + phase * .35 });
-        addFloatText(0, 4, -8, "盾甲冲撞 · 快躲开正面!", "#8de8ff", 5.2);
+        addFloatText(0, 4, -8, "铁饼冲撞 · 躲开正面!", "#8de8ff", 5.2);
       } else if (pattern === 1) {
         queueBossShot("shock", -3.5, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
         queueBossShot("shock", 3.5, PLAYER_Z, BOSS_WINDUP + 10 + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
         if (phase >= 3) queueBossShot("shock", 0, PLAYER_Z, BOSS_WINDUP + 18 + BOSS_FLIGHT.shock, { halfWidth: 2.0 });
-        addFloatText(0, 4, -8, "护盾震荡波!", "#91efff", 5);
+        addFloatText(0, 4, -8, "盾震波!", "#91efff", 5);
       } else {
         queueBossShot("shock", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 3.5 });
         if (phase >= 2) queueBossShot("shell", clamp(px + (px >= 0 ? -4 : 4), -6, 6), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 1.6 });
-        addFloatText(0, 4, -8, "蛮力横扫!", "#a5f0ff", 5);
+        addFloatText(0, 4, -8, "铁饼横扫!", "#a5f0ff", 5);
       }
       break;
     }
     case "sniper": {
-      // 狙击: 追踪锁定(先跟着你走再定身) + 安全点网格
+      // 红点幽灵: 红点锁定 + 安全点网格
       if (pattern === 0 || pattern === 2) {
         const locks = phase >= 3 ? 3 : phase >= 2 ? 2 : 1;
         for (let i = 0; i < locks; i++) {
           queueBossShot("lock", px + (i - (locks - 1) / 2) * 1.2, PLAYER_Z, BOSS_WINDUP + 6 * i + BOSS_FLIGHT.lock, { radius: 1.2 });
         }
-        addFloatText(0, 4, -10, locks > 1 ? "多重锁定 · 持续走位!" : "狙击锁定 · 快躲开!", "#e2b8ff", 5.2);
+        addFloatText(0, 4, -10, locks > 1 ? "多重红点 · 持续走位!" : "红点锁定 · 快躲开!", "#ff8fb8", 5.2);
       } else {
         const slots = [-6, -2, 2, 6];
         const safe = slots[Math.floor(rand(0, slots.length))];
         slots.forEach(x => {
           if (x !== safe) queueBossShot("lock", x, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.lock, { radius: 1.15 });
         });
-        addFloatText(safe, 4, -8, "安全节点在发光一侧!", "#d8a5ff", 5.2);
+        addFloatText(safe, 4, -8, "安全节点在发光一侧!", "#ff6b9d", 5.2);
       }
       break;
     }
     case "rocket": {
-      // 火箭: 错峰导弹雨 + 缺口地毯炸
+      // 爆米花将军: 导弹雨 + 缺口
       if (pattern === 0) {
         for (let i = 0; i < 3 + phase; i++) {
           queueBossShot("rain", rand(-6.3, 6.3), PLAYER_Z + rand(-1.2, 2), BOSS_WINDUP + i * 7 + BOSS_FLIGHT.rain, { radius: 1.3 });
         }
-        addFloatText(0, 4, -8, "错峰导弹雨!", "#ffad69", 5);
+        addFloatText(0, 4, -8, "爆米花导弹雨!", "#ffad69", 5);
       } else if (pattern === 1) {
         const safe = clamp(px + rand(-1.5, 1.5), -4.5, 4.5);
         queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.gap, { safeHalf: phase >= 3 ? 1.35 : 1.75 });
-        addFloatText(safe, 4, -8, "地毯轰炸 · 钻绿色缺口!", "#ffd06b", 5.3);
+        addFloatText(safe, 4, -8, "地毯炸 · 钻绿色缺口!", "#ffd06b", 5.3);
       } else {
         for (let i = 0; i < 2 + phase; i++) queueBossShot("rain", clamp(px + rand(-4, 4), -6, 6), PLAYER_Z, BOSS_WINDUP + i * 5 + BOSS_FLIGHT.rain, { radius: 1.4 });
         if (phase >= 2) {
           const safe = px > 0 ? -3 : 3;
           queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.gap, { safeHalf: 1.5 });
         }
-        addFloatText(0, 4, -8, "齐射覆盖!", "#ff9d5c", 5);
+        addFloatText(0, 4, -8, "将军齐射!", "#ff9d5c", 5);
       }
       break;
     }
@@ -2729,17 +2747,17 @@ function launchBossAttack() {
         queueBossShot("beam", px > 0 ? 3.5 : -3.5, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
         if (phase >= 2) queueBossShot("beam", px > 0 ? -3.5 : 3.5, -12, BOSS_WINDUP + 8 + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
         if (phase >= 3) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.8 });
-        addFloatText(0, 4, -10, "等离子切割!", "#72f5ff", 5);
+        addFloatText(0, 4, -10, "棱镜光刀!", "#72f5ff", 5);
       } else if (pattern === 1) {
         queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.2 + phase * .35 });
         if (phase >= 2) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + 14 + BOSS_FLIGHT.ring, { radius: 3.4 });
-        addFloatText(0, 4, -8, "扩散能环 · 站到环外!", "#79fbff", 5.2);
+        addFloatText(0, 4, -8, "扩环封路 · 站到环外!", "#79fbff", 5.2);
       } else {
         [-5, 0, 5].forEach((x, i) => {
           if (phase < 2 && x === 0) return;
           queueBossShot("beam", x, -12, BOSS_WINDUP + i * 4 + BOSS_FLIGHT.beam, { halfWidth: 1.15 });
         });
-        addFloatText(0, 4, -8, "能量栅栏!", "#5ee7ff", 5);
+        addFloatText(0, 4, -8, "棱镜栅栏!", "#5ee7ff", 5);
       }
     }
   }
@@ -2784,8 +2802,9 @@ function resolveBossHazard(h) {
 
 function spawnBossMinions() {
   const count = Math.min(2 + Math.ceil((boss?.number || 1) / 2), 6);
+  const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < count; i++) {
-    const hp = enemyHealth("normal", standardProjectileDamage(), .65);
+    const hp = enemyHealth("normal", standardProjectileDamage(), .65, shotCount);
     const mesh = makeSoldier(0xc83b42, "rifle", 1);
     mesh.position.set(rand(-6, 6), 0, -42 - rand(0, 8)); mesh.rotation.y = Math.PI; scene.add(mesh);
     const e = { id: nextEnemyId++, mesh, hp, maxHp: hp, type: "normal", speed: .11 + (boss?.number || 1) * .008, radius: .75, score: 25, contactDmg: DAMAGE_VALUES.normal, attackCd: 0 };
@@ -2992,7 +3011,9 @@ function update() {
   if (!boss && !bossWarning && spawnEnemyCd <= 0) {
     spawnEnemyGroup();
     const hordeBoost = eventHordeT > 0 ? .55 : 1;
-    spawnEnemyCd = Math.max(22, (105 - distance / 15) * hordeBoost);
+    // Slower cadence while distance is low; ramps up after ~280.
+    const baseGap = distance < 280 ? 145 - distance / 20 : 105 - distance / 15;
+    spawnEnemyCd = Math.max(22, baseGap * hordeBoost);
   }
   spawnCrateCd--;
   if (!boss && !bossWarning && spawnCrateCd <= 0) {
@@ -3552,7 +3573,7 @@ function openCampaignVictory() {
   if (victoryTitleEl) victoryTitleEl.textContent = "战役胜利!";
   if (victorySubtitleEl) {
     victorySubtitleEl.textContent =
-      `击破全部 ${CAMPAIGN_BOSS_COUNT} 名指挥官 · 得分 ${Math.floor(score)} · 前进 ${Math.floor(distance)}m。可结算本局，或进入更难的无尽冲锋。`;
+      `击破公路五害全部 ${CAMPAIGN_BOSS_COUNT} 名 · 得分 ${Math.floor(score)} · 前进 ${Math.floor(distance)}m。可结算本局，或进入更难的无尽冲锋。`;
   }
   victoryPanelEl?.classList.remove("hidden");
   addFloatText(0, 6, -8, "战役通关!", "#ffd86b", 7.5);
@@ -3580,7 +3601,7 @@ function endCampaignVictory() {
     "战役胜利!<br>得分 <b style='color:#ffd54f'>" + Math.floor(score) +
     "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
     "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>" +
-    "<br><span style='font-size:14px;color:#b8f58b'>已击败全部 " + CAMPAIGN_BOSS_COUNT + " 名专属指挥官</span>";
+    "<br><span style='font-size:14px;color:#b8f58b'>已击败公路五害全部 " + CAMPAIGN_BOSS_COUNT + " 名 Boss</span>";
   startBtn.textContent = "再来一局";
   saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
   saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
@@ -3688,7 +3709,7 @@ function updateHUD() {
   b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;
   if (saveData.medals > 0) b += `<span style="color:#ffd86b">司令勋章 ×${saveData.medals}</span>`;
   buffsEl.innerHTML = b;
-  rankBadgeEl.textContent = `${rankName(player.level)} · ${weapon.label} · ${weather.id === "rain" ? "小雨" : weather.id === "mist" ? "薄雾" : weather.id === "dusk" ? "黄昏" : "阴天"}`;
+  rankBadgeEl.textContent = `豆丁 · ${rankName(player.level)} · ${weapon.label} · ${weather.id === "rain" ? "小雨" : weather.id === "mist" ? "薄雾" : weather.id === "dusk" ? "黄昏" : "阴天"}`;
 }
 
 function renderStatsPanel() {
@@ -3833,7 +3854,7 @@ function startGame() {
   victoryPanelEl?.classList.add("hidden");
   cameraFollowX = 0; screenFlashT = 0;
   screenFlashEl.style.opacity = "0"; speedFxEl.style.opacity = "0";
-  spawnEnemyCd = 60; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
+  spawnEnemyCd = 110; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
   weather.reset();
   overlay.classList.add("hidden");
   overlay.classList.remove("game-over");
@@ -3926,10 +3947,10 @@ function loop(now = performance.now()) {
 }
 
 /* 待机展示:放一个士兵 */
-const demoSoldier = makeSoldier(0x27466b, "rifle", 3);
-applyRimFresnel(demoSoldier, 0x9fd8ff, 2.3, .8);
+const demoSoldier = makeSoldier(0x2a5a8a, "rifle", 3);
+applyRimFresnel(demoSoldier, 0xffe8a0, 2.1, .95);
 demoSoldier.position.set(0, 0, -2);
-demoSoldier.scale.set(2, 2, 2);
+demoSoldier.scale.set(2.15, 2.15, 2.15);
 scene.add(demoSoldier);
 
 const buildTagEl = document.getElementById("buildTag");
