@@ -94,7 +94,8 @@ body {
 .vital-hit { animation: vitalHitFlash .34s ease-out; }
 
 #choicePanel,
-#prestigePanel {
+#prestigePanel,
+#victoryPanel {
   position: fixed;
   inset: 0;
   z-index: 20;
