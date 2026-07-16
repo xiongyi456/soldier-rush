@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-8";
+const BUILD_VERSION = "mg-road-9";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -4143,8 +4143,9 @@ function endGame() {
 function requestStartGame() {
   if (!running) startGame();
 }
-// main.ts wires the start button after this module finishes loading.
+// 尽早挂上，main 一 load 完就能点开始（不必等 demo/loop 之后）
 (globalThis as any).__soldierRushStart = requestStartGame;
+(globalThis as any).__soldierRushReady = true;
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
@@ -4201,9 +4202,6 @@ if (versionTagEl) {
   versionTagEl.textContent = `${BUILD_VERSION}${shortTime ? " · " + shortTime : ""}`;
 }
 
-(globalThis as any).__soldierRushStart = requestStartGame;
-(globalThis as any).__soldierRushReady = true;
-
 try {
   loop();
   requestAnimationFrame(() => {
@@ -4213,10 +4211,14 @@ try {
   console.error("Soldier Rush render boot failed", error);
 }
 
-void hydrateNativeSave().then(nativeSave => {
-  if (!nativeSave) return;
-  saveData = nativeSave;
-  renderProgressText();
-}).catch(() => {
-  // Preferences may fail in some browsers; localStorage already loaded.
-});
+try {
+  void hydrateNativeSave().then(nativeSave => {
+    if (!nativeSave) return;
+    saveData = nativeSave;
+    renderProgressText();
+  }).catch(() => {
+    // Preferences may fail in some browsers; localStorage already loaded.
+  });
+} catch {
+  // ignore
+}
