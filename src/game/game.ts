@@ -1436,7 +1436,10 @@ function spawnEnemyGroup() {
   const groupSize = Math.min(desired, remaining);
   const baseX = rand(-ROAD_HALF + 2.2, ROAD_HALF - 2.2);
   const formation = Math.floor(Math.random() * 3);
-  let gunnersLeft = distance >= 250 ? Math.min(2, Math.random() < .55 ? 1 + (Math.random() < .3 ? 1 : 0) : 0) : 0;
+  // 远程锁定枪兵：前两关（打完 2 个 Boss 前）不出现，后期再加压
+  let gunnersLeft = bossCount >= 2 && distance >= 200
+    ? Math.min(2, Math.random() < .55 ? 1 + (Math.random() < .3 ? 1 : 0) : 0)
+    : 0;
   const shotDamage = standardProjectileDamage();
   const shotCount = Math.max(1, inheritedShotDirections().length);
   for (let i = 0; i < groupSize; i++) {
@@ -1976,6 +1979,8 @@ function hurtHero(amount, label, color = "#ff5252", allowDodge = true, armorShar
 }
 
 function createEnemyAimHazard(enemy) {
+  // 前两关禁用远程锁定，避免开局被红圈点名
+  if (bossCount < 2) return false;
   if (enemyAimHazards.length >= 2) return false;
   const group = new THREE.Group();
   const markerMat = new THREE.MeshBasicMaterial({ color: 0xff365a, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
@@ -3238,7 +3243,7 @@ function update() {
     e.mesh.position.z += gunnerHolding ? worldSpeed * .04 : (e.speed * slowMul + worldSpeed * .5);
     e.mesh.position.x += Math.sin(t * 3 + e.mesh.userData.phase) * 0.015;
     animateWalk(e.mesh, t, 8, e.type === "heavy" ? .38 : .52);
-    if (e.type === "gunner" && e.mesh.position.z > -64 && e.mesh.position.z < -12) {
+    if (e.type === "gunner" && bossCount >= 2 && e.mesh.position.z > -64 && e.mesh.position.z < -12) {
       e.attackCd--;
       if (e.attackCd <= 0) {
         if (createEnemyAimHazard(e)) e.attackCd = rand(90, 150);
