@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-16";
+const BUILD_VERSION = "mg-road-17";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -3731,18 +3731,54 @@ function openSkillChoice() {
   uiPaused = true;
   clearInputState();
   currentSkillOptions = chooseSkillOptions(player.skills);
-  choiceTitleEl.textContent = `${rankName(player.level)} 晋升`;
-  choiceSubtitleEl.textContent = `选择一项自动生效的战斗技能 · 当前武器 ${WEAPON_DEFS[weaponForRank(player.level)].label}`;
+  if (choiceTitleEl) choiceTitleEl.textContent = `${rankName(player.level)} 晋升`;
+  if (choiceSubtitleEl) {
+    choiceSubtitleEl.textContent = `选择一项自动生效的战斗技能 · 当前武器 ${WEAPON_DEFS[weaponForRank(player.level)].label}`;
+  }
+  if (!choiceGridEl || !choicePanelEl) {
+    // DOM 异常时不卡死：直接放行并给攻速
+    player.pendingPromotion = false;
+    uiPaused = false;
+    buffFireRate(.88);
+    addFloatText(player.x, 4.2, PLAYER_Z - 1, "晋升奖励 · 攻速!", "#8fd9ff", 5);
+    return;
+  }
   choiceGridEl.innerHTML = "";
-  currentSkillOptions.forEach((skill, index) => {
-    const nextLevel = skillLevel(player.skills, skill.id) + 1;
+  if (!currentSkillOptions.length) {
+    // 技能全满：给可点的补偿卡，避免空白卡死
     const button = document.createElement("button");
-    button.className = `skill-card ${skill.category}`;
-    button.innerHTML = `<div class="icon">${skill.icon}</div><h3>${index + 1}. ${skill.name}</h3><p>${skill.description(nextLevel)}</p><div class="level">Lv.${nextLevel} / ${skill.maxLevel}</div>`;
-    button.addEventListener("click", () => selectSkill(index));
+    button.className = "skill-card attack";
+    button.type = "button";
+    button.innerHTML = `<div class="icon">⚡</div><h3>技能已满</h3><p>全部战斗技能已满级，领取攻速与攻击加成继续冲锋。</p><div class="level">点击领取</div>`;
+    button.addEventListener("click", () => {
+      buffFireRate(.85);
+      buffDamage(.08);
+      choicePanelEl.classList.add("hidden");
+      currentSkillOptions = [];
+      player.pendingPromotion = false;
+      uiPaused = false;
+      lastLoopTime = performance.now();
+      accumulator = 0;
+      updateHUD();
+      setTimeout(processRankProgress, 0);
+    });
     choiceGridEl.appendChild(button);
-  });
+  } else {
+    currentSkillOptions.forEach((skill, index) => {
+      const nextLevel = skillLevel(player.skills, skill.id) + 1;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `skill-card ${skill.category}`;
+      button.innerHTML = `<div class="icon">${skill.icon}</div><h3>${index + 1}. ${skill.name}</h3><p>${skill.description(nextLevel)}</p><div class="level">Lv.${nextLevel} / ${skill.maxLevel}</div>`;
+      button.addEventListener("click", () => selectSkill(index));
+      choiceGridEl.appendChild(button);
+    });
+  }
   choicePanelEl.classList.remove("hidden");
+  choicePanelEl.style.display = "flex";
+  // 滚到顶部，确保手机上第一张技能卡可见
+  choicePanelEl.scrollTop = 0;
+  requestAnimationFrame(() => { choicePanelEl.scrollTop = 0; });
 }
 
 let airstrikeResolving = false;
@@ -3860,6 +3896,7 @@ function selectSkill(index) {
   addFloatText(player.x, 4.6, PLAYER_Z - 1, `${skill.name} Lv.${player.skills[skill.id]}`, `#${color.toString(16).padStart(6, "0")}`, 5.4);
   flashScreen(`#${color.toString(16).padStart(6, "0")}`, .34);
   choicePanelEl.classList.add("hidden");
+  choicePanelEl.style.display = "";
   currentSkillOptions = [];
   player.pendingPromotion = false;
   uiPaused = false;

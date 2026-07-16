@@ -38,18 +38,33 @@ export function skillLevel(levels: SkillLevels, id: string): number {
 
 export function chooseSkillOptions(levels: SkillLevels, random = Math.random): SkillDefinition[] {
   const available = SKILL_DEFS.filter(skill => skillLevel(levels, skill.id) < skill.maxLevel);
-  const take = (category: SkillCategory): SkillDefinition | undefined => {
-    const group = available.filter(skill => skill.category === category);
-    return group.length ? group[Math.floor(random() * group.length)] : undefined;
-  };
+  if (!available.length) return [];
+
+  // 稳定洗牌，避免 sort(() => random()-0.5) 在部分引擎下异常
+  const shuffled = [...available];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    const tmp = shuffled[i];
+    shuffled[i] = shuffled[j];
+    shuffled[j] = tmp;
+  }
+
+  const take = (category: SkillCategory): SkillDefinition | undefined =>
+    shuffled.find(skill => skill.category === category);
+
   const selected: SkillDefinition[] = [];
   for (const category of ["attack", "defense"] as const) {
     const item = take(category);
     if (item) selected.push(item);
   }
-  const utility = available.filter(skill => skill.category === "tactical" || skill.category === "support");
-  if (utility.length) selected.push(utility[Math.floor(random() * utility.length)]);
-  for (const skill of available.sort(() => random() - .5)) {
+  const utility = shuffled.find(
+    skill =>
+      (skill.category === "tactical" || skill.category === "support") &&
+      !selected.some(s => s.id === skill.id),
+  );
+  if (utility) selected.push(utility);
+
+  for (const skill of shuffled) {
     if (selected.length >= 3) break;
     if (!selected.some(item => item.id === skill.id)) selected.push(skill);
   }
