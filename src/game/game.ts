@@ -577,7 +577,7 @@ function applyRimFresnel(mesh, rimColor = 0x8fd6ff, power = 2.4, strength = .85)
 
 /* ================= 道具箱 ================= */
 const REWARDS = [
-  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 24, xp: 48 },
+  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 24, xp: 28 },
   { type: "heal",     label: "医疗核心", color: "#ff6685", weight: 10, heal: 20 },
   { type: "firerate", label: "射速+",  color: "#4fc3f7", weight: 14 },
   { type: "damage",   label: "火力+",  color: "#ff8a65", weight: 14 },
@@ -1439,13 +1439,14 @@ function shatterEnemy(e) {
 }
 
 function killXpForEnemy(e) {
+  // Keep kill XP low: ranks come from many kills + bosses, not one wave.
   const base =
-    e.type === "fodder" ? 4 :
-    e.type === "gunner" ? 9 :
-    e.type === "shield" ? 11 :
-    e.type === "heavy" ? 16 :
-    6;
-  return e.elite ? Math.round(base * 1.8) : base;
+    e.type === "fodder" ? 1 :
+    e.type === "gunner" ? 2 :
+    e.type === "shield" ? 2 :
+    e.type === "heavy" ? 3 :
+    1;
+  return e.elite ? base + 2 : base;
 }
 
 /* 击杀结算:得分 + 经验 + 连杀链 */
@@ -1735,8 +1736,8 @@ const GATE_BUFFS = [
     apply() { player.damageBonus = Math.min(.6, player.damageBonus + .08); } },
   { text: "射速 +10%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
     apply() { player.fireRateMul = Math.max(.65, player.fireRateMul * .9); } },
-  { text: "经验 +70",  color: 0x8bc34a, css: "#aed581", good: true,
-    apply() { grantHeroXp(70); } },
+  { text: "经验 +35",  color: 0x8bc34a, css: "#aed581", good: true,
+    apply() { grantHeroXp(35); } },
   { text: "护盾 +1",   color: 0x66e7ff, css: "#7df6ff", good: true,
     apply() { player.shield = Math.min(player.shield + 1, 9); } },
 ];
@@ -1995,7 +1996,7 @@ function applyReward(r, x, z) {
   flashScreen(r.color, .28);
   addFloatText(x, 3, z, r.label, r.color);
   switch (r.type) {
-    case "xp":       grantHeroXp(r.xp || 55, x, z); break;
+    case "xp":       grantHeroXp(r.xp || 28, x, z); break;
     case "heal": {
       const hero = heroUnit();
       if (hero) {
@@ -2403,11 +2404,11 @@ function defeatBoss() {
     hero.armor = Math.min(hero.maxArmor, hero.armor + healed);
     addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
   }
-  // Boss XP is the main rank pace-setter: early ranks before boss 2, commander by boss 5 with normal play.
-  const bossXp = 140 + defeated.number * 55;
+  // Boss XP is a milestone, not a full rank dump (boss1≈55, boss5≈135).
+  const bossXp = 40 + defeated.number * 15;
   if (unlock) {
     const def = WEAPON_DEFS[unlock];
-    grantHeroXp(bossXp + 40, player.x, PLAYER_Z - 5);
+    grantHeroXp(bossXp + 20, player.x, PLAYER_Z - 5);
     addFloatText(player.x, 5.2, PLAYER_Z - 5, `${def.label} 能量核心!`, def.css, 6.2);
     flashScreen(def.css, .4);
   } else {
