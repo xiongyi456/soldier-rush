@@ -1,31 +1,31 @@
-export type WeaponId = "rifle" | "smg" | "shotgun" | "sniper" | "rocket" | "laser";
+export type WeaponId = "rifle";
 
 export interface RankDefinition {
   name: string;
   xpToNext: number;
   visualStage: number;
-  weapon?: WeaponId;
 }
 
 /**
  * Target pace (normal play, 5-Boss campaign):
  * Boss1 ≈ 列兵–下士 · Boss2 ≈ 上士 · Boss3 ≈ 中尉 · Boss4 ≈ 中校 · Boss5 ≈ 将军–司令
  * Total ladder XP (新兵→司令) ≈ 1835; kill XP is small so ranks drip, not explode.
+ * Single weapon: always 步枪. Power stage rises with rank; fire rate mainly from gates.
  */
 export const RANK_DEFS: readonly RankDefinition[] = [
-  { name: "新兵", xpToNext: 50, visualStage: 0, weapon: "rifle" },
+  { name: "新兵", xpToNext: 50, visualStage: 0 },
   { name: "列兵", xpToNext: 70, visualStage: 0 },
-  { name: "下士", xpToNext: 90, visualStage: 1, weapon: "smg" },
+  { name: "下士", xpToNext: 90, visualStage: 1 },
   { name: "中士", xpToNext: 110, visualStage: 1 },
-  { name: "上士", xpToNext: 130, visualStage: 1, weapon: "shotgun" },
+  { name: "上士", xpToNext: 130, visualStage: 1 },
   { name: "少尉", xpToNext: 155, visualStage: 2 },
-  { name: "中尉", xpToNext: 180, visualStage: 2, weapon: "sniper" },
+  { name: "中尉", xpToNext: 180, visualStage: 2 },
   { name: "上尉", xpToNext: 210, visualStage: 2 },
   { name: "少校", xpToNext: 240, visualStage: 3 },
-  { name: "中校", xpToNext: 275, visualStage: 3, weapon: "rocket" },
+  { name: "中校", xpToNext: 275, visualStage: 3 },
   { name: "上校", xpToNext: 310, visualStage: 3 },
   { name: "将军", xpToNext: 350, visualStage: 4 },
-  { name: "司令", xpToNext: 400, visualStage: 4, weapon: "laser" },
+  { name: "司令", xpToNext: 400, visualStage: 4 },
 ] as const;
 
 export const MAX_RANK = RANK_DEFS.length;
@@ -39,15 +39,17 @@ export function rankXpToNext(rank: number): number {
   return RANK_DEFS[Math.max(0, Math.min(MAX_RANK - 1, rank - 1))].xpToNext;
 }
 
-export function weaponForRank(rank: number): WeaponId {
-  let weapon: WeaponId = "rifle";
-  for (let index = 0; index < Math.min(rank, MAX_RANK); index += 1) {
-    weapon = RANK_DEFS[index].weapon ?? weapon;
-  }
-  return weapon;
+/** Always the one rifle — no multi-weapon evolution. */
+export function weaponForRank(_rank: number): WeaponId {
+  return "rifle";
 }
 
+/** Power budget stage 1–6 by rank bands (not separate gun types). */
 export function weaponStageForRank(rank: number): number {
-  const order: WeaponId[] = ["rifle", "smg", "shotgun", "sniper", "rocket", "laser"];
-  return order.indexOf(weaponForRank(rank)) + 1;
+  if (rank >= 12) return 6;
+  if (rank >= 10) return 5;
+  if (rank >= 7) return 4;
+  if (rank >= 5) return 3;
+  if (rank >= 3) return 2;
+  return 1;
 }

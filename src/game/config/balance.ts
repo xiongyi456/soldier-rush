@@ -1,6 +1,6 @@
-/** Per-stage total firepower budget. Growth stays gentle so multi-shot stages do not melt fodder. */
-export const WEAPON_STAGE_POWER = [2, 2.9, 4.2, 5.8, 7.6, 9.6] as const;
-export const MIN_FIRE_INTERVAL = 7;
+/** Per-stage total firepower budget (single rifle). Gate fire-rate is the main DPS lever. */
+export const WEAPON_STAGE_POWER = [2.4, 2.9, 3.5, 4.2, 5.0, 6.0] as const;
+export const MIN_FIRE_INTERVAL = 6;
 export const BOSS_TARGET_SECONDS = 12;
 
 export const DAMAGE_VALUES = {
@@ -56,13 +56,13 @@ export interface RewardCore<TReward = unknown> {
   magnetRadius: number;
 }
 
-/** Hits needed if a single projectile lands. Multi-shot / dense stages compensated in enemyHealth. */
+/** Hits needed if a single projectile lands. Tuned so early rifle can clear fodder. */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [2.8, 4.2],
-  normal: [4.4, 6.8],
-  gunner: [8, 11.5],
-  shield: [10, 14.5],
-  heavy: [17, 24],
+  fodder: [1.2, 1.9],
+  normal: [2.0, 3.2],
+  gunner: [4.0, 6.0],
+  shield: [5.0, 7.5],
+  heavy: [8.0, 12.0],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -96,8 +96,8 @@ export function enemyHealth(
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
   // Dense multi-shot stages often land several bullets on one fodder; pad harder than log2*0.42.
   const shots = Math.max(1, shotCount);
-  // Late multi-shot (7–13) must feel chunky, not one-frame lawnmower.
-  const volley = 1 + Math.log2(shots) * .9 + Math.max(0, shots - 3) * .12 + Math.max(0, shots - 7) * .08;
+  // Light multi-shot pad only — single rifle + gate fire-rate is the main power curve.
+  const volley = 1 + Math.log2(shots) * .35;
   return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley));
 }
 

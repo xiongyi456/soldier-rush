@@ -32,21 +32,17 @@ const PLAYER_Z = 0;
 const MAX_SQUAD = 1;
 const MAX_TIER = MAX_RANK;
 
+/** 单枪体系：全程步枪，射速主要靠穿门叠加 */
 const WEAPON_DEFS = {
-  rifle:   { label: "步枪",   color: 0x5aa9ff, css: "#74b9ff", damage: 2,  fireRate: 24, speed: 1.28, type: "bullet",  unlockBoss: 0 },
-  smg:     { label: "冲锋枪", color: 0x63e6be, css: "#63e6be", damage: 1,  fireRate: 9,  speed: 1.38, type: "smg",     unlockBoss: 1 },
-  shotgun: { label: "霰弹枪", color: 0xffb454, css: "#ffbd66", damage: 1,  fireRate: 38, speed: 1.18, type: "shotgun", unlockBoss: 2 },
-  sniper:  { label: "狙击枪", color: 0xd59cff, css: "#d7a4ff", damage: 10, fireRate: 64, speed: 1.82, type: "pierce",  unlockBoss: 3, pierce: 3 },
-  rocket:  { label: "火箭筒", color: 0xff766b, css: "#ff8177", damage: 8,  fireRate: 78, speed: .82,  type: "rocket",  unlockBoss: 4, radius: 2.8 },
-  laser:   { label: "激光枪", color: 0x76f4ff, css: "#7df6ff", damage: 2,  fireRate: 7,  speed: 1.75, type: "laser",   unlockBoss: 5, pierce: 4 },
+  rifle: { label: "步枪", color: 0x5aa9ff, css: "#74b9ff", damage: 2, fireRate: 22, speed: 1.32, type: "bullet", unlockBoss: 0 },
 };
 const WEAPON_ORDER = Object.keys(WEAPON_DEFS);
 const BOSS_DEFS = [
-  { name: "铁罐头大佐", color: 0x4a7a3e, accent: 0xffc44f, unlock: "smg", theme: "tank", signature: "双线压路炮 · 别站直线!" },
-  { name: "铁饼队长",   color: 0x5a7a96, accent: 0x8de8ff, unlock: "shotgun", theme: "shield", signature: "正面冲撞 · 盾震波" },
-  { name: "红点幽灵",   color: 0x5a4a78, accent: 0xff6b9d, unlock: "sniper", theme: "sniper", signature: "红点锁定 · 持续走位" },
-  { name: "爆米花将军", color: 0x9a4538, accent: 0xff9d5c, unlock: "rocket", theme: "rocket", signature: "导弹雨 · 钻绿色缺口" },
-  { name: "棱镜哨兵",   color: 0x1f7a86, accent: 0x72f5ff, unlock: "laser", theme: "energy", signature: "切割光刀 · 扩环封路" },
+  { name: "铁罐头大佐", color: 0x4a7a3e, accent: 0xffc44f, unlock: null, theme: "tank", signature: "双线压路炮 · 别站直线!" },
+  { name: "铁饼队长",   color: 0x5a7a96, accent: 0x8de8ff, unlock: null, theme: "shield", signature: "正面冲撞 · 盾震波" },
+  { name: "红点幽灵",   color: 0x5a4a78, accent: 0xff6b9d, unlock: null, theme: "sniper", signature: "红点锁定 · 持续走位" },
+  { name: "爆米花将军", color: 0x9a4538, accent: 0xff9d5c, unlock: null, theme: "rocket", signature: "导弹雨 · 钻绿色缺口" },
+  { name: "棱镜哨兵",   color: 0x1f7a86, accent: 0x72f5ff, unlock: null, theme: "energy", signature: "切割光刀 · 扩环封路" },
 ];
 /** 战役主线共 5 个 Boss；击败第 5 个后可选胜利结算或无尽冲锋 */
 const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
@@ -56,8 +52,8 @@ const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
  */
 const BOSS_SUMMON = [
   { kills: 28, rank: 3 },   // 1 铁罐头 · 下士前后
-  { kills: 62, rank: 5 },   // 2 铁饼 · 上士 / 霰弹
-  { kills: 105, rank: 7 },  // 3 红点 · 中尉 / 狙击
+  { kills: 62, rank: 5 },   // 2 铁饼 · 上士
+  { kills: 105, rank: 7 },  // 3 红点 · 中尉
   { kills: 155, rank: 9 },  // 4 爆米花 · 少校
   { kills: 210, rank: 11 }, // 5 棱镜 · 上校
 ] as const;
@@ -1201,17 +1197,14 @@ function standardProjectileDamage() {
 }
 
 function inheritedShotDirections() {
+  // Single rifle: mostly center shot; rank / split only gently widens coverage.
   const stage = weaponStageForRank(player.level);
   const dirs = [0];
-  if (stage >= 2) dirs.push(-.07, .07);
-  // Shotgun era: fan, not full-road carpet. Later stages add lanes gradually.
-  if (stage >= 3) dirs.push(-.16, .16);
-  if (stage >= 4) dirs.push(-.1, .1);
-  if (stage >= 5) dirs.push(-.22, .22);
-  if (stage >= 6) dirs.push(-.14, .14);
+  if (stage >= 3) dirs.push(-.08, .08);
+  if (stage >= 5) dirs.push(-.14, .14);
   const split = skillLevel(player.skills, "split");
   for (let i = 1; i <= Math.min(split, 2); i++) dirs.push(-.05 * i, .05 * i);
-  if (player.spreadT > 0) dirs.push(-.26, .26);
+  if (player.spreadT > 0) dirs.push(-.18, .18);
   return [...new Set(dirs.map(value => Math.round(value * 1000) / 1000))].sort((a, b) => a - b);
 }
 
@@ -1796,21 +1789,24 @@ function spawnHordeWave() {
 
 /* ================= 选择门(Left / Right Gate) ================= */
 /* 每对门固定：一边增益 + 一边减益，左右随机，穿门前看清颜色与文字 */
+/* 穿门是射速成长主路径：好门多给射速，火力/护盾/经验为辅 */
 const GATE_BUFFS = [
-  { text: "火力 +8%",   color: 0xff7043, css: "#ff9a76", good: true,
-    apply() { player.damageBonus = Math.min(.6, player.damageBonus + .08); } },
-  { text: "射速 +10%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
-    apply() { player.fireRateMul = Math.max(.65, player.fireRateMul * .9); } },
-  { text: "经验 +35",  color: 0x8bc34a, css: "#aed581", good: true,
-    apply() { grantHeroXp(35); } },
+  { text: "射速 +18%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
+    apply() { player.fireRateMul = Math.max(.48, player.fireRateMul * .82); } },
+  { text: "射速 +12%", color: 0x29b6f6, css: "#81d4fa", good: true,
+    apply() { player.fireRateMul = Math.max(.48, player.fireRateMul * .88); } },
+  { text: "火力 +6%",   color: 0xff7043, css: "#ff9a76", good: true,
+    apply() { player.damageBonus = Math.min(.5, player.damageBonus + .06); } },
+  { text: "经验 +30",  color: 0x8bc34a, css: "#aed581", good: true,
+    apply() { grantHeroXp(30); } },
   { text: "护盾 +1",   color: 0x66e7ff, css: "#7df6ff", good: true,
     apply() { player.shield = Math.min(player.shield + 1, 9); } },
 ];
 const GATE_DEBUFFS = [
-  { text: "火力 -8%",   color: 0xb71c1c, css: "#ef5350", good: false,
-    apply() { player.damageBonus = Math.max(0, player.damageBonus - .08); } },
-  { text: "射速 -10%", color: 0x5d4037, css: "#bcaaa4", good: false,
-    apply() { player.fireRateMul = Math.min(1.35, player.fireRateMul / .9); } },
+  { text: "射速 -12%", color: 0x5d4037, css: "#bcaaa4", good: false,
+    apply() { player.fireRateMul = Math.min(1.45, player.fireRateMul / .88); } },
+  { text: "火力 -6%",   color: 0xb71c1c, css: "#ef5350", good: false,
+    apply() { player.damageBonus = Math.max(0, player.damageBonus - .06); } },
   { text: "护甲 -2",   color: 0x7b1fa2, css: "#ce93d8", good: false,
     apply() { const hero = heroUnit(); if (hero) damageUnit(hero, 2); player.hurtT = 18; } },
   { text: "减速 2秒",  color: 0x455a64, css: "#90a4ae", good: false,
@@ -2077,7 +2073,7 @@ function applyReward(r, x, z) {
       }
       break;
     }
-    case "firerate": player.fireRateMul = Math.max(.65, player.fireRateMul * .9); break;
+    case "firerate": player.fireRateMul = Math.max(.48, player.fireRateMul * .82); break;
     case "damage":   player.damageBonus = Math.min(.6, player.damageBonus + .08); break;
     case "spread":   player.spreadT = 600; break;                        // 10 秒散弹
     case "shield":   player.shield = Math.min(player.shield + 3, 9); break;
@@ -2100,46 +2096,32 @@ function applyReward(r, x, z) {
 }
 
 function fireUnitWeapon(unit, p) {
-  const def = WEAPON_DEFS[unit.weaponId] || WEAPON_DEFS.rifle;
+  const def = WEAPON_DEFS.rifle;
   const damage = standardProjectileDamage();
-  let dirs = inheritedShotDirections();
-  if (def.type === "smg") dirs = dirs.map(vx => vx + rand(-.018, .018));
-  // Rockets are fat AOE shells — cap volleys so late game is punchy, not confetti lawnmower.
-  if (def.type === "rocket") {
-    if (dirs.length > 5) {
-      const step = Math.ceil(dirs.length / 5);
-      dirs = dirs.filter((_, i) => i % step === 0).slice(0, 5);
-    }
-  }
+  const dirs = inheritedShotDirections();
 
   unit.fireCd = effectiveFireInterval();
   unit.mesh.userData.recoil = 1;
   if (unit.tier >= 4 && frame % 3 === 0) {
-    addImpactRing(p.x, 1.05, p.z - .85, def.color, unit.tier === 5 ? 1.35 : 1.0);
-    addParticles(p.x, 1.18, p.z - .85, def.css, unit.tier === 5 ? 4 : 2, .12);
+    addImpactRing(p.x, 1.05, p.z - .85, def.color, 1.0);
+    addParticles(p.x, 1.18, p.z - .85, def.css, 2, .12);
   }
   addMuzzleFlash(p.x + .1, p.z - 1.15);
-  const blastLv = skillLevel(player.skills, "blast");
-  // Only true rockets explode. Laser/sniper stay pierce — readable power, not full-screen clear.
-  const isRocket = def.type === "rocket";
   for (const vx of dirs) {
     const mesh = bulletMeshPool.acquire();
     mesh.visible = true;
-    mesh.material = bulletMaterial(unit.weaponId);
+    mesh.material = bulletMaterial("rifle");
     mesh.position.set(p.x + .1, 1.04 + unit.tier * .025, p.z - 1.0);
     mesh.rotation.y = Math.atan2(-vx, def.speed);
-    if (def.type === "rocket") mesh.scale.set(2.0, 2.0, 2.5);
-    else if (def.type === "laser") mesh.scale.set(.72, .72, 3.2);
-    else if (def.type === "pierce") mesh.scale.z = 1.8;
-    else mesh.scale.set(1, 1, 1);
+    mesh.scale.set(1, 1, 1);
     scene.add(mesh);
     bullets.push({
-      mesh, weaponId: unit.weaponId, type: def.type, vx, dmg: damage,
+      mesh, weaponId: "rifle", type: "bullet", vx, dmg: damage,
       px: mesh.position.x, pz: mesh.position.z, speed: def.speed,
-      pierce: Math.max(def.pierce || 1, unit.tier >= 3 ? 1 + Math.floor(unit.tier / 2) : 1) + skillLevel(player.skills, "pierce"),
-      radius: isRocket ? (def.radius || 1.15) * (1 + blastLv * .1) : 0,
-      blastMul: 1 + blastLv * .1,
-      starburst: isRocket,
+      pierce: 1 + skillLevel(player.skills, "pierce"),
+      radius: 0,
+      blastMul: 1,
+      starburst: false,
       hitIds: new Set(),
     });
   }
@@ -2512,19 +2494,9 @@ function damageBoss(amount, x, z) {
   }
 }
 
-function unlockBossWeapon(bossNumber) {
-  const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
-  const weaponId = def.unlock;
-  if (!weaponId || saveData.unlockedWeapons.includes(weaponId)) return null;
-  saveData.unlockedWeapons.push(weaponId);
-  saveData.unlockedWeapons = WEAPON_ORDER.filter(id => saveData.unlockedWeapons.includes(id));
-  return weaponId;
-}
-
 function defeatBoss() {
   if (!boss) return;
   const defeated = boss;
-  const unlock = unlockBossWeapon(defeated.number);
   score += 600 * defeated.number;
   saveData.highestBoss = Math.max(saveData.highestBoss, defeated.number);
   saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
@@ -2552,17 +2524,12 @@ function defeatBoss() {
     hero.armor = Math.min(hero.maxArmor, hero.armor + healed);
     addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
   }
-  // Boss XP is a milestone, not a full rank dump (boss1≈55, boss5≈135).
+  // Boss reward: permanent-for-run fire-rate kick (single-rifle power curve).
+  player.fireRateMul = Math.max(.48, player.fireRateMul * .9);
   const bossXp = 40 + defeated.number * 15;
-  if (unlock) {
-    const def = WEAPON_DEFS[unlock];
-    grantHeroXp(bossXp + 20, player.x, PLAYER_Z - 5);
-    addFloatText(player.x, 5.2, PLAYER_Z - 5, `${def.label} 能量核心!`, def.css, 6.2);
-    flashScreen(def.css, .4);
-  } else {
-    grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
-    addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破!", "#ffe27a", 6.2);
-  }
+  grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
+  addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 射速提升!", "#8fd9ff", 6.2);
+  flashScreen("#8fd9ff", .35);
   if (player.level < MAX_RANK) {
     addFloatText(player.x, 4.2, PLAYER_Z - 3, `军衔 ${rankName(player.level)} ${player.level}/${MAX_RANK}`, "#b8f58b", 4.6);
   }
@@ -3093,9 +3060,10 @@ function update() {
   /* 玩家移动 */
   const prevX = player.x;
   const moveMul = player.moveSlowT > 0 ? .55 : 1;
-  if (keys["arrowleft"]  || keys["a"]) { player.tx = null; player.x -= 0.22 * moveMul; }
-  if (keys["arrowright"] || keys["d"]) { player.tx = null; player.x += 0.22 * moveMul; }
-  if (player.tx != null) player.x += (player.tx - player.x) * 0.2 * moveMul;
+  // Slightly slower lateral move so dodging is deliberate, not twitchy.
+  if (keys["arrowleft"]  || keys["a"]) { player.tx = null; player.x -= 0.14 * moveMul; }
+  if (keys["arrowright"] || keys["d"]) { player.tx = null; player.x += 0.14 * moveMul; }
+  if (player.tx != null) player.x += (player.tx - player.x) * 0.12 * moveMul;
   const margin = squadHalfWidth() + 0.7;
   player.x = clamp(player.x, -ROAD_HALF + margin, ROAD_HALF - margin);
   player.vx += ((player.x - prevX) - player.vx) * .28;
@@ -3852,7 +3820,7 @@ function updateHUD() {
     healthLagEl.style.transform = `scaleX(${Math.max(hr, healthLagRatio)})`;
     armorLagEl.style.transform = `scaleX(${Math.max(ar, armorLagRatio)})`;
   }
-  let b = `<span style="color:${weapon.css}">${weapon.label} · 武器阶段 ${weaponStageForRank(player.level)}/6</span>`;
+  let b = `<span style="color:${weapon.css}">${weapon.label} · 火力阶段 ${weaponStageForRank(player.level)}/6 · 射速×${(1 / player.fireRateMul).toFixed(2)}</span>`;
   if (hero) b += `<span style="color:#ff8295">生命 ${Math.ceil(hero.health)}/${hero.maxHealth}</span>`;
   if (combo >= 2)         b += `<span style="color:#ff5722">连杀 ×${combo}</span>`;
   if (critT > 0)          b += `<span style="color:#ffb300">暴击模式 ${Math.ceil(critT / 60)}s</span>`;
@@ -3941,8 +3909,7 @@ const controlText = document.getElementById("controlText");
 
 function renderProgressText() {
   if (!progressText) return;
-  const weapons = saveData.unlockedWeapons.map(id => WEAPON_DEFS[id]?.label).filter(Boolean).join(" · ");
-  progressText.textContent = `已解锁：${weapons}　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
+  progressText.textContent = `步枪体系　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
 }
 renderProgressText();
 

@@ -9,8 +9,10 @@ describe("rank progression", () => {
     expect(RANK_DEFS.every(rank => rank.xpToNext > 0)).toBe(true);
   });
 
-  it("evolves weapons only on configured milestones", () => {
-    expect([1, 3, 5, 7, 10, 13].map(weaponForRank)).toEqual(["rifle", "smg", "shotgun", "sniper", "rocket", "laser"]);
+  it("keeps a single rifle and stages power by rank bands", () => {
+    expect([1, 3, 5, 7, 10, 13].map(weaponForRank)).toEqual(["rifle", "rifle", "rifle", "rifle", "rifle", "rifle"]);
+    expect(weaponStageForRank(1)).toBe(1);
+    expect(weaponStageForRank(5)).toBe(3);
     expect(weaponStageForRank(9)).toBe(4);
     expect(weaponStageForRank(13)).toBe(6);
   });

@@ -55,37 +55,34 @@ describe("hero vitals", () => {
 });
 
 describe("combat pacing", () => {
-  const shots = [1, 3, 7, 9, 13, 13];
-
-  it("keeps projectile growth smooth across stages", () => {
-    const values = [1, 2, 3, 4, 5, 6].map((stage, index) => projectileDamage(stage, shots[index]));
+  it("keeps projectile growth smooth across stages (single rifle)", () => {
+    const values = [1, 2, 3, 4, 5, 6].map(stage => projectileDamage(stage, 1));
     expect(values.every(value => value > 0)).toBe(true);
-    expect(values[5] / values[0]).toBeLessThan(1.8);
+    expect(values[5] / values[0]).toBeLessThan(3);
+    expect(values[5] / values[0]).toBeGreaterThan(1.5);
   });
 
-  it("respects each weapon cadence floor without going below the safety floor", () => {
-    expect([24, 9, 38, 64, 78, 7].map(rate => fireInterval(rate))).toEqual([24, 9, 38, 64, 78, 7]);
-    expect(fireInterval(7, .65, 5)).toBe(7);
+  it("respects rifle cadence and the safety floor", () => {
+    expect(fireInterval(22)).toBe(22);
+    expect(fireInterval(22, .5, 0)).toBe(11);
+    expect(fireInterval(6, .5, 5)).toBe(6);
   });
 
   it("uses archetype hit-count bands", () => {
     const damage = 2;
-    expect(enemyHealth("fodder", damage, 1)).toBe(9);
-    expect(enemyHealth("gunner", damage, .5)).toBe(20);
-    expect(enemyHealth("heavy", damage, .5)).toBe(41);
+    expect(enemyHealth("fodder", damage, 1)).toBe(4);
+    expect(enemyHealth("gunner", damage, .5)).toBe(10);
+    expect(enemyHealth("heavy", damage, .5)).toBe(20);
   });
 
-  it("scales enemy HP with multi-shot volleys so fodder is not one-shot", () => {
-    for (let stage = 1; stage <= 6; stage += 1) {
-      const count = shots[stage - 1];
-      const damage = projectileDamage(stage, count);
-      const fodder = enemyHealth("fodder", damage, .5, count);
-      const volley = damage * Math.min(count, 3);
-      // Need more than one multi-hit volley even after weapon upgrades.
-      expect(fodder / volley).toBeGreaterThanOrEqual(1.15);
-      expect(enemyHealth("normal", damage, .5, count) / damage).toBeGreaterThanOrEqual(6);
-      expect(enemyHealth("heavy", damage, .5, count) / damage).toBeGreaterThanOrEqual(20);
-    }
+  it("keeps early fodder clearable with a single rifle", () => {
+    const damage = projectileDamage(1, 1);
+    const fodder = enemyHealth("fodder", damage, .5, 1);
+    // About 1–2 hits with starter rifle.
+    expect(fodder / damage).toBeGreaterThanOrEqual(1.1);
+    expect(fodder / damage).toBeLessThanOrEqual(2.2);
+    expect(enemyHealth("normal", damage, .5, 1) / damage).toBeGreaterThanOrEqual(2);
+    expect(enemyHealth("heavy", damage, .5, 1) / damage).toBeGreaterThanOrEqual(8);
   });
 
   it("targets an eleven to sixteen second boss window", () => {
@@ -95,13 +92,12 @@ describe("combat pacing", () => {
     expect(hp / dps).toBeLessThanOrEqual(16);
   });
 
-  it("keeps the boss window bounded across all weapon stages", () => {
-    const cadences = [24, 9, 9, 9, 9, 7];
+  it("keeps the boss window bounded across rifle stages", () => {
     for (let stage = 1; stage <= 6; stage += 1) {
-      const dps = projectileDamage(stage, shots[stage - 1]) * shots[stage - 1] * 60 / fireInterval(cadences[stage - 1]);
+      const dps = projectileDamage(stage, 1) * 60 / fireInterval(22);
       const duration = bossHealth(stage, dps) / dps;
       expect(duration).toBeGreaterThanOrEqual(11);
-      expect(duration).toBeLessThanOrEqual(16.05);
+      expect(duration).toBeLessThanOrEqual(16.2);
     }
   });
 });

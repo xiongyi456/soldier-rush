@@ -37,7 +37,7 @@ export function defaultSaveV2(): SaveDataV2 {
 
 function sanitize(raw: Partial<SaveDataV2>): SaveDataV2 {
   const base = defaultSaveV2();
-  const weaponOrder = ["rifle", "smg", "shotgun", "sniper", "rocket", "laser"];
+  const weaponOrder = ["rifle"];
   const unlocked = weaponOrder.filter(id => raw.unlockedWeapons?.includes(id));
   return {
     version: 2,
