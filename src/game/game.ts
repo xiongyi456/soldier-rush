@@ -3880,7 +3880,14 @@ function endGame() {
   overlay.classList.add("game-over");
   overlay.classList.remove("hidden");
 }
-startBtn?.addEventListener("click", () => { if (!running && (globalThis as any).__soldierRushReady) startGame(); });
+function requestStartGame() {
+  if (!running) startGame();
+}
+startBtn?.addEventListener("click", () => {
+  if ((globalThis as any).__soldierRushReady) requestStartGame();
+});
+(globalThis as any).__soldierRushStart = requestStartGame;
+(globalThis as any).__soldierRushReady = true;
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
@@ -3931,30 +3938,25 @@ scene.add(demoSoldier);
 const buildTagEl = document.getElementById("buildTag");
 if (buildTagEl) buildTagEl.textContent = `版本 ${__BUILD_TIME__} · v2`;
 
-function markGameReady(): void {
-  (globalThis as any).__soldierRushReady = true;
-  if (startBtn) {
-    startBtn.disabled = false;
-    if (!startBtn.textContent || /加载|资源|超时|失败/.test(startBtn.textContent)) {
-      startBtn.textContent = "开始游戏";
-    }
+(globalThis as any).__soldierRushReady = true;
+(globalThis as any).__soldierRushStart = requestStartGame;
+if (startBtn) {
+  startBtn.disabled = false;
+  if (!startBtn.textContent || /加载|资源|超时|失败/.test(startBtn.textContent)) {
+    startBtn.textContent = "开始游戏";
   }
-  const loadStatus = document.getElementById("loadStatus");
-  if (loadStatus) loadStatus.textContent = "";
-  document.getElementById("loadingScreen")?.classList.add("done");
 }
+const loadStatus = document.getElementById("loadStatus");
+if (loadStatus) loadStatus.textContent = "";
+document.getElementById("loadingScreen")?.classList.add("done");
 
-// Unlock UI immediately once module evaluated; first frame confirms WebGL is alive.
 try {
   loop();
-  markGameReady();
   requestAnimationFrame(() => {
-    try { composer.render(); } catch { /* ignore first-frame glitch */ }
-    markGameReady();
+    try { composer.render(); } catch { /* ignore */ }
   });
 } catch (error) {
   console.error("Soldier Rush render boot failed", error);
-  markGameReady(); // still allow start; update() may recover
 }
 
 void hydrateNativeSave().then(nativeSave => {

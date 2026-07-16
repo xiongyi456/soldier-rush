@@ -1,8 +1,15 @@
-import { Capacitor } from "@capacitor/core";
-import { Preferences } from "@capacitor/preferences";
-
 export const SAVE_KEY_V1 = "soldierRush.save.v1";
 export const SAVE_KEY_V2 = "soldierRush.save.v2";
+
+function isNativePlatform(): boolean {
+  try {
+    // Avoid hard dependency at module top-level for plain web/Pages.
+    const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    return !!cap?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+}
 
 export interface SaveDataV2 {
   version: 2;
@@ -64,14 +71,16 @@ export function loadSaveV2(): SaveDataV2 {
 export function persistSaveV2(save: SaveDataV2): void {
   const safe = sanitize(save);
   try { localStorage.setItem(SAVE_KEY_V2, JSON.stringify(safe)); } catch { /* ignored */ }
-  if (Capacitor.isNativePlatform()) {
-    void Preferences.set({ key: SAVE_KEY_V2, value: JSON.stringify(safe) });
-  }
+  if (!isNativePlatform()) return;
+  void import("@capacitor/preferences")
+    .then(({ Preferences }) => Preferences.set({ key: SAVE_KEY_V2, value: JSON.stringify(safe) }))
+    .catch(() => { /* ignored */ });
 }
 
 export async function hydrateNativeSave(): Promise<SaveDataV2 | null> {
-  if (!Capacitor.isNativePlatform()) return null;
+  if (!isNativePlatform()) return null;
   try {
+    const { Preferences } = await import("@capacitor/preferences");
     const { value } = await Preferences.get({ key: SAVE_KEY_V2 });
     if (!value) return null;
     const save = sanitize(JSON.parse(value));

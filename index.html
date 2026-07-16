@@ -251,10 +251,10 @@
       司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
   <div class="big" id="resultText"></div>
   <p id="progressText" class="progress-text"></p>
-  <button id="startBtn" disabled>资源加载中…</button>
+  <button id="startBtn">开始游戏</button>
   <button id="installBtn" class="secondary hidden">安装到手机桌面</button>
   <p id="installTip" class="install-tip">手机浏览器打开后，可从浏览器菜单选择“添加到主屏幕”</p>
-  <p id="loadStatus" class="install-tip">首次打开约需几秒下载 3D 资源，请稍候</p>
+  <p id="loadStatus" class="install-tip">点击开始后加载游戏（首次稍等几秒）</p>
   <p id="buildTag" class="build-tag"></p>
  </div>
 </div>
@@ -290,103 +290,21 @@
 </div>
 
 <script>
+// Lightweight fallback only. Real start flow lives in main.ts.
 window.addEventListener("DOMContentLoaded", function () {
   var button = document.getElementById("startBtn");
-  var statusEl = document.getElementById("loadStatus");
   var loading = document.getElementById("loadingScreen");
+  if (loading) loading.classList.add("done");
   if (!button) return;
-
-  function setStatus(text) {
-    if (statusEl) statusEl.textContent = text || "";
-  }
-
-  function markReady() {
-    window.__soldierRushReady = true;
-    button.disabled = false;
-    if (button.textContent.indexOf("再来") < 0) button.textContent = "开始游戏";
-    setStatus("");
-    if (loading) loading.classList.add("done");
-  }
-
-  function clearCachesAndReload() {
-    var done = function () {
-      var url = new URL(location.href);
-      url.searchParams.set("v", String(Date.now()));
-      location.replace(url.toString());
-    };
-    if (window.__soldierRushClearCaches) {
-      window.__soldierRushClearCaches().finally(done);
-      return;
-    }
-    if ("caches" in window) {
-      caches.keys().then(function (keys) {
-        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-      }).then(function () {
-        if (!("serviceWorker" in navigator)) return;
-        return navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(regs.map(function (r) { return r.unregister(); }));
-        });
-      }).finally(done);
-      return;
-    }
-    done();
-  }
-
-  function markFailed(detail) {
-    button.disabled = false;
-    button.textContent = "清除缓存并刷新";
-    setStatus(detail || "加载失败，请检查网络后刷新");
-    if (loading) {
-      var card = loading.querySelector(".loading-card");
-      if (card) card.innerHTML = "加载失败<br><small>" + (detail || "请刷新重试") + "</small>";
-      loading.classList.remove("done");
-    }
-  }
-
-  // Capture-phase guard: only allow real start after game module is ready.
-  button.addEventListener("click", function (event) {
-    if (window.__soldierRushReady) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (location.protocol === "file:") {
-      markFailed("请勿直接打开 html 文件。在电脑运行 npm run dev，手机访问同一 Wi‑Fi 下的地址。");
-      return;
-    }
-    if (button.textContent.indexOf("清除缓存") >= 0 || button.textContent.indexOf("重试") >= 0) {
-      clearCachesAndReload();
-      return;
-    }
-    setStatus("还在下载 3D 资源，请再等几秒…");
-  }, true);
+  button.disabled = false;
+  if (!button.textContent) button.textContent = "开始游戏";
 
   if (location.protocol === "file:") {
-    markFailed("请用本地服务器打开，不要双击 html。");
-    return;
-  }
-
-  // Poll until game sets ready (mobile can take longer for three.js).
-  var waited = 0;
-  var timer = setInterval(function () {
-    waited += 250;
-    if (window.__soldierRushReady) {
-      clearInterval(timer);
-      markReady();
-      return;
-    }
-    if (waited === 3000) setStatus("手机首次加载较慢，请继续等待…");
-    if (waited === 8000) setStatus("仍在加载，请保持页面打开…");
-    if (waited === 15000) setStatus("网络偏慢。可继续等，或点按钮清除缓存重试");
-    if (waited >= 18000) {
-      clearInterval(timer);
-      // Don't leave users stranded: unlock a recovery action.
-      markFailed("加载过久。请点「清除缓存并刷新」。若仍失败，换 Wi‑Fi 或用电脑同一局域网地址。");
-    }
-  }, 250);
-
-  // If game already booted before this script ran.
-  if (window.__soldierRushReady) {
-    clearInterval(timer);
-    markReady();
+    button.textContent = "请用服务器打开";
+    button.addEventListener("click", function (e) {
+      e.preventDefault();
+      alert("请运行 npm run dev，用手机访问同一 Wi-Fi 下的地址。不要双击 html。");
+    }, true);
   }
 });
 </script>
