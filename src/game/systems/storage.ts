@@ -12,7 +12,7 @@ export interface SaveDataV2 {
   bestDistance: number;
   prestigeCount: number;
   medals: number;
-  quality: "auto" | "high" | "low";
+  quality: "auto" | "high" | "medium" | "low";
 }
 
 export function defaultSaveV2(): SaveDataV2 {
@@ -40,7 +40,7 @@ function sanitize(raw: Partial<SaveDataV2>): SaveDataV2 {
     bestDistance: Math.max(0, Number(raw.bestDistance) || 0),
     prestigeCount: Math.max(0, Number(raw.prestigeCount) || 0),
     medals: Math.min(20, Math.max(0, Number(raw.medals) || 0)),
-    quality: raw.quality === "high" || raw.quality === "low" ? raw.quality : base.quality,
+    quality: raw.quality === "high" || raw.quality === "medium" || raw.quality === "low" ? raw.quality : base.quality,
   };
 }
 

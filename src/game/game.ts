@@ -20,6 +20,7 @@ import {
   projectileDamage,
   resolveHeroDamage,
 } from "./config/balance.ts";
+import { compactInPlace } from "./util/compact.ts";
 
 const BUILD_VERSION = "commander-road-2";
 
@@ -52,7 +53,11 @@ function persistSave() { persistSaveV2(saveData); }
 
 const mobileDevice = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const lowPowerDevice = mobileDevice && (!navigator.deviceMemory || navigator.deviceMemory <= 4);
-const quality = saveData.quality === "high" ? detectQuality(mobileDevice, false) : saveData.quality === "low" ? detectQuality(true, true) : detectQuality(mobileDevice, lowPowerDevice);
+const quality = detectQuality(
+  mobileDevice,
+  lowPowerDevice,
+  saveData.quality === "high" || saveData.quality === "medium" || saveData.quality === "low" ? saveData.quality : "auto",
+);
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("cv"), antialias: !lowPowerDevice, powerPreference: "high-performance" });
 renderer.setPixelRatio(quality.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -277,23 +282,32 @@ for (let i = 0; i < 16; i++) {
   trees.push(t);
 }
 
-/* ================= 3D 士兵模型 ================= */
+/* ================= 3D 士兵模型 (皮克斯风 Q 版) ================= */
 const soldierGeo = {
-  torso: new THREE.CapsuleGeometry(0.36, 0.32, 7, 12),
-  limb: new THREE.CapsuleGeometry(0.12, 0.29, 5, 9),
-  head: new THREE.SphereGeometry(0.34, 18, 13),
-  helmet: new THREE.SphereGeometry(0.365, 18, 11, 0, Math.PI * 2, 0, Math.PI * .62),
-  hand: new THREE.SphereGeometry(0.135, 12, 8),
-  boot: new THREE.CapsuleGeometry(.135, .12, 4, 8),
+  torso: new THREE.SphereGeometry(0.42, 18, 14),
+  belly: new THREE.SphereGeometry(0.36, 16, 12),
+  limb: new THREE.CapsuleGeometry(0.14, 0.22, 6, 10),
+  head: new THREE.SphereGeometry(0.48, 22, 16),
+  helmet: new THREE.SphereGeometry(0.5, 20, 14, 0, Math.PI * 2, 0, Math.PI * .58),
+  hand: new THREE.SphereGeometry(0.16, 12, 10),
+  boot: new THREE.SphereGeometry(0.18, 12, 10),
+  cheek: new THREE.SphereGeometry(0.12, 12, 10),
+  nose: new THREE.SphereGeometry(0.08, 10, 8),
+  eye: new THREE.SphereGeometry(0.12, 14, 12),
+  pupil: new THREE.SphereGeometry(0.07, 12, 10),
+  shine: new THREE.SphereGeometry(0.03, 8, 6),
+  brow: new THREE.CapsuleGeometry(0.02, 0.12, 3, 6),
+  gunBody: new THREE.CapsuleGeometry(0.09, 0.42, 5, 8),
+  gunTip: new THREE.CapsuleGeometry(0.05, 0.18, 4, 8),
   cube: new THREE.BoxGeometry(1, 1, 1),
-  shadow: new THREE.CircleGeometry(0.58, 18),
+  shadow: new THREE.CircleGeometry(0.72, 22),
 };
 const sharedSoldierGeometries = new Set(Object.values(soldierGeo));
-const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x17344b, transparent: true, opacity: 0.2, depthWrite: false });
+const soldierShadowMat = new THREE.MeshBasicMaterial({ color: 0x1a3048, transparent: true, opacity: 0.18, depthWrite: false });
 
-/* 卡通渲染 4 阶渐变 ramp:暗带偏冷蓝、亮带偏暖,一次生成全局共享(cel-shading 的灵魂) */
+/* 软卡通 5 阶 ramp：暖阴影 → 柔和中间调 → 奶油高光 */
 function makeToonRamp() {
-  const steps = [0x3d4a63, 0x6d7d95, 0xb9c2cf, 0xffffff];   // 冷阴影 → 中间调 → 暖高光
+  const steps = [0x4a3d52, 0x7a6a78, 0xb8a89a, 0xe8d8c8, 0xfff8f0];
   const data = new Uint8Array(steps.length * 4);
   for (let i = 0; i < steps.length; i++) {
     const c = new THREE.Color(steps[i]);
@@ -315,12 +329,9 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   const rig = new THREE.Group();
   g.add(rig);
   const weapon = WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle;
-  // 卡通材质:三段式 cel-shading。保留 metalness/roughness 形参兼容旧调用(不参与着色)。
-  // emissive 恒为黑,作为受击闪白的干净基态
-  const mat = (c, metalness = .02, roughness = .68) => new THREE.MeshToonMaterial({
-    color: c, gradientMap: TOON_RAMP,
-  });
-  const dark = new THREE.Color(mainColor).multiplyScalar(0.55).getHex();
+  const mat = (c) => new THREE.MeshToonMaterial({ color: c, gradientMap: TOON_RAMP });
+  const dark = new THREE.Color(mainColor).multiplyScalar(0.62).getHex();
+  const mid = new THREE.Color(mainColor).lerp(new THREE.Color(0xffffff), .12).getHex();
 
   function part(geo, material, x, y, z, sx = 1, sy = 1, sz = 1, parent = rig) {
     const m = new THREE.Mesh(geo, material);
@@ -330,124 +341,151 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   }
 
   const uniformMat = mat(mainColor);
+  const midMat = mat(mid);
   const darkMat = mat(dark);
-  const skinMat = mat(0xffc697);
-  const trouserMat = mat(0x26394b);
-  const gunMat = mat(0x28323d, .42, .38);
-  const accentMat = mat(weapon.color, .12, .42);
+  const skinMat = mat(0xffd2b0);
+  const blushMat = mat(0xff9a8a);
+  const trouserMat = mat(0x2a3d52);
+  const bootMat = mat(0x243240);
+  const gunMat = mat(0x2c3848);
+  const accentMat = mat(weapon.color);
   const glowMat = new THREE.MeshBasicMaterial({ color: weapon.color, toneMapped: false });
-  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x172033), .62).getHex(), .08, .5);
+  const hairMat = mat(new THREE.Color(mainColor).lerp(new THREE.Color(0x1a2438), .55).getHex());
+  const whiteMat = mat(0xfffaf4);
+  const irisMat = mat(0x2a4060);
 
   const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
-  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .018; shadow.scale.y = .62;
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = .015; shadow.scale.set(1.05, .7, 1);
   g.add(shadow);
 
+  /* 腿：短粗圆润，大战靴 */
   const legL = new THREE.Group(), legR = new THREE.Group();
-  legL.position.set(-.17, .56, 0); legR.position.set(.17, .56, 0);
+  legL.position.set(-.2, .52, 0); legR.position.set(.2, .52, 0);
   rig.add(legL, legR);
-  part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legL);
-  part(soldierGeo.limb, trouserMat, 0, -.25, 0, 1, 1.05, 1, legR);
-  const bootL = part(soldierGeo.boot, gunMat, 0, -.53, -.11, 1.34, .9, 1.62, legL);
-  const bootR = part(soldierGeo.boot, gunMat, 0, -.53, -.11, 1.34, .9, 1.62, legR);
-  bootL.rotation.x = bootR.rotation.x = Math.PI / 2;
+  part(soldierGeo.limb, trouserMat, 0, -.18, 0, 1.15, .95, 1.15, legL);
+  part(soldierGeo.limb, trouserMat, 0, -.18, 0, 1.15, .95, 1.15, legR);
+  part(soldierGeo.boot, bootMat, 0, -.48, -.06, 1.35, .85, 1.55, legL);
+  part(soldierGeo.boot, bootMat, 0, -.48, -.06, 1.35, .85, 1.55, legR);
+  part(soldierGeo.boot, darkMat, 0, -.5, -.16, .9, .55, .7, legL);
+  part(soldierGeo.boot, darkMat, 0, -.5, -.16, .9, .55, .7, legR);
 
-  part(soldierGeo.torso, uniformMat, 0, .98, 0, 1.24, 1.02, .9);   // 更宽的肩/胸
-  part(soldierGeo.cube, darkMat, 0, 1.04, -.30, .58, .48, .12); // 胸甲
-  if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, .75, -.02, .74, .13, .48); // 腰带
+  /* 躯干：梨形软身体 + 圆肩 */
+  part(soldierGeo.belly, midMat, 0, .72, .04, 1.15, .95, 1.05);
+  part(soldierGeo.torso, uniformMat, 0, 1.05, 0, 1.18, 1.05, .95);
+  part(soldierGeo.torso, darkMat, 0, 1.02, -.28, .55, .55, .22);
+  if (!lowPowerDevice) {
+    part(soldierGeo.limb, darkMat, 0, .78, .02, 1.9, .28, 1.1);
+    part(soldierGeo.hand, accentMat, 0, 1.08, -.32, .45, .45, .2);
+  }
+  for (const side of [-1, 1]) {
+    part(soldierGeo.hand, uniformMat, side * .42, 1.22, .02, 1.05, .85, 1.0);
+  }
 
-  const head = part(soldierGeo.head, skinMat, 0, 1.68, -.05, 1.32, 1.26, 1.12);   // Q 版大头
-  part(soldierGeo.helmet, hairMat, 0, 1.84, .02, 1.34, 1.14, 1.22);
-  part(new THREE.ConeGeometry(.24, .56, 5), hairMat, -.24, 1.97, .02, 1, 1, 1.1).rotation.z = -.42;
-  part(new THREE.ConeGeometry(.2, .46, 5), hairMat,  .24, 1.94, .02, 1, 1, 1.1).rotation.z = .36;
-  part(soldierGeo.cube, accentMat, 0, 1.77, -.35, .78, .08, .075);
-  if (!lowPowerDevice) part(soldierGeo.cube, darkMat, 0, 1.65, -.31, .72, .085, .52); // 帽檐
+  /* 头：大圆头 + 柔和头盔/发型 */
+  const head = part(soldierGeo.head, skinMat, 0, 1.72, -.02, 1.18, 1.12, 1.08);
+  part(soldierGeo.helmet, hairMat, 0, 1.9, .04, 1.22, 1.0, 1.15);
+  part(soldierGeo.cheek, hairMat, -.28, 1.95, .08, .9, .7, .85);
+  part(soldierGeo.cheek, hairMat, .28, 1.95, .08, .9, .7, .85);
+  part(soldierGeo.cheek, hairMat, 0, 2.02, .12, 1.1, .55, .75);
+  part(soldierGeo.limb, hairMat, 0, 1.78, -.38, 2.2, .22, .55);
+  part(soldierGeo.hand, accentMat, 0, 1.86, -.4, .55, .35, .2);
+
   let face = null;
   if (!lowPowerDevice || tier >= 2) {
-    const eyeWhite = mat(0xfffbf1, 0, .35), pupilMat = glowMat;
-    const eyeGeo = new THREE.SphereGeometry(.095, 8, 6), pupilGeo = new THREE.SphereGeometry(.056, 7, 5);
     for (const side of [-1, 1]) {
-      part(eyeGeo, eyeWhite, side * .16, 1.70, -.40, 1.15, 1.36, .58);
-      part(pupilGeo, pupilMat, side * .16, 1.69, -.462, 1.05, 1.24, .44);
-      const brow = part(soldierGeo.cube, hairMat, side * .16, 1.815, -.44, .18, .028, .02);
-      brow.rotation.z = side * -.14;
+      part(soldierGeo.eye, whiteMat, side * .18, 1.74, -.42, 1.15, 1.35, .7);
+      part(soldierGeo.pupil, irisMat, side * .18, 1.73, -.5, 1.0, 1.15, .55);
+      part(soldierGeo.shine, whiteMat, side * .15, 1.78, -.54, 1.2, 1.2, 1);
+      part(soldierGeo.shine, whiteMat, side * .22, 1.7, -.53, .7, .7, .7);
+      const brow = part(soldierGeo.brow, hairMat, side * .18, 1.9, -.46, 1.4, 1, 1);
+      brow.rotation.z = side * -.22;
+      brow.rotation.x = .15;
+      part(soldierGeo.cheek, blushMat, side * .32, 1.62, -.32, .7, .45, .4);
     }
-    part(new THREE.SphereGeometry(.056, 9, 6), skinMat, 0, 1.62, -.452, .85, 1.05, .9);
-    face = part(new THREE.TorusGeometry(.092, .014, 5, 12, Math.PI), hairMat, 0, 1.52, -.44, 1, .65, 1);
+    part(soldierGeo.nose, skinMat, 0, 1.64, -.5, .85, .95, .95);
+    face = part(new THREE.TorusGeometry(.1, .018, 6, 14, Math.PI * .9), hairMat, 0, 1.52, -.46, 1.05, .7, 1);
     face.rotation.z = Math.PI;
-    for (const side of [-1, 1]) part(new THREE.SphereGeometry(.066, 10, 7), skinMat, side * .385, 1.68, -.03, .72, 1, .6);
+    for (const side of [-1, 1]) {
+      part(soldierGeo.cheek, skinMat, side * .46, 1.7, -.02, .85, 1.05, .7);
+    }
   }
 
+  /* 军衔阶段装饰：圆润徽章而非硬角 */
   if (tier >= 2) {
-    part(new THREE.IcosahedronGeometry(.23, 0), accentMat, -.48, 1.28, -.02, 1, 1, 1);
-    part(new THREE.IcosahedronGeometry(.23, 0), accentMat,  .48, 1.28, -.02, 1, 1, 1);
-    part(soldierGeo.cube, glowMat, 0, 1.14, -.39, .13, .13, .04);
+    for (const side of [-1, 1]) {
+      part(soldierGeo.hand, accentMat, side * .48, 1.28, 0, 1.1, .9, 1.0);
+      part(soldierGeo.shine, glowMat, side * .48, 1.32, -.12, 1.4, 1.4, 1.4);
+    }
+    part(soldierGeo.hand, glowMat, 0, 1.12, -.36, .5, .5, .25);
   }
   if (tier >= 3) {
-    part(new THREE.ConeGeometry(.12, .55, 5), accentMat, 0, 2.11, .02, 1, 1, 1);
-    part(soldierGeo.cube, darkMat, 0, 1.05, .29, .7, .78, .12);
-    for (const side of [-1, 1]) part(new THREE.ConeGeometry(.13, .65, 5), glowMat, side * .44, 1.02, .28, 1, 1, 1).rotation.z = side * .7;
+    part(soldierGeo.hand, accentMat, 0, 2.12, .02, .7, .55, .7);
+    part(soldierGeo.torso, darkMat, 0, 1.0, .32, .75, .7, .25);
+    for (const side of [-1, 1]) {
+      const fin = part(soldierGeo.hand, glowMat, side * .4, 1.0, .3, .55, .9, .35);
+      fin.scale.y = 1.2;
+    }
   }
   if (tier >= 4) {
-    const aura = new THREE.Mesh(new THREE.RingGeometry(.58, .72, 24), new THREE.MeshBasicMaterial({
-      color: weapon.color, transparent: true, opacity: .28, side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+    const aura = new THREE.Mesh(new THREE.RingGeometry(.55, .78, 28), new THREE.MeshBasicMaterial({
+      color: weapon.color, transparent: true, opacity: .22, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
     }));
-    aura.rotation.x = -Math.PI / 2; aura.position.y = .035; g.add(aura); g.userData.aura = aura;
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(.38, .035, 6, 20), glowMat);
-    halo.position.set(0, 2.12, .02); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
+    aura.rotation.x = -Math.PI / 2; aura.position.y = .03; g.add(aura); g.userData.aura = aura;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(.42, .04, 8, 24), glowMat);
+    halo.position.set(0, 2.2, .02); halo.rotation.x = Math.PI / 2; rig.add(halo); g.userData.halo = halo;
     for (const side of [-1, 1]) {
-      const wing = part(soldierGeo.cube, accentMat, side * .76, 1.22, .2, .18, .56, .08);
-      wing.rotation.z = side * .48;
+      const wing = part(soldierGeo.hand, accentMat, side * .72, 1.2, .18, .55, 1.15, .35);
+      wing.scale.set(.5, 1.3, .4);
+      wing.rotation.z = side * .55;
     }
   }
   if (tier >= 5) {
-    part(new THREE.CylinderGeometry(.32, .47, .18, 6), glowMat, 0, 2.08, .01, 1, 1, 1);
+    part(soldierGeo.hand, glowMat, 0, 2.18, 0, 1.1, .5, 1.1);
     for (const side of [-1, 1]) {
-      const crown = part(new THREE.ConeGeometry(.11, .42, 5), glowMat, side * .19, 2.3, -.02, 1, 1, 1);
-      crown.rotation.z = side * .22;
+      part(soldierGeo.hand, glowMat, side * .2, 2.35, -.02, .45, .7, .45);
     }
-    const cape = part(soldierGeo.cube, accentMat, 0, 1.0, .42, .72, .95, .06);
-    cape.rotation.x = -.15;
+    const cape = part(soldierGeo.torso, accentMat, 0, .95, .45, .9, 1.15, .2);
+    cape.scale.set(.85, 1.1, .15);
+    cape.rotation.x = -.2;
   }
 
+  /* 手臂：短粗 + 大手套 */
   const armL = new THREE.Group(), armR = new THREE.Group();
-  armL.position.set(-.38, 1.24, -.02); armR.position.set(.38, 1.24, -.02);
-  const armBase = weaponId === "rocket" ? .9 : weaponId === "sniper" ? 1.16 : weaponId === "shotgun" ? 1.02 : 1.08;
+  armL.position.set(-.48, 1.22, 0); armR.position.set(.48, 1.22, 0);
+  const armBase = weaponId === "rocket" ? .85 : weaponId === "sniper" ? 1.1 : weaponId === "shotgun" ? .98 : 1.02;
   armL.rotation.x = armR.rotation.x = armBase;
   rig.add(armL, armR);
-  part(soldierGeo.limb, uniformMat, 0, -.19, 0, 1, .9, 1, armL);
-  part(soldierGeo.limb, uniformMat, 0, -.19, 0, 1, .9, 1, armR);
-  if (!lowPowerDevice) {
-    part(soldierGeo.hand, skinMat, 0, -.39, 0, 1.08, 1.08, 1.08, armL);
-    part(soldierGeo.hand, skinMat, 0, -.39, 0, 1.08, 1.08, 1.08, armR);
-  }
+  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.2, .85, 1.2, armL);
+  part(soldierGeo.limb, uniformMat, 0, -.16, 0, 1.2, .85, 1.2, armR);
+  part(soldierGeo.hand, skinMat, 0, -.4, 0, 1.25, 1.25, 1.25, armL);
+  part(soldierGeo.hand, skinMat, 0, -.4, 0, 1.25, 1.25, 1.25, armR);
 
+  /* 武器：圆润科幻比例 */
   const gunRig = new THREE.Group();
-  gunRig.position.set(.1, 1.14, -.58); rig.add(gunRig);
+  gunRig.position.set(.12, 1.1, -.62); rig.add(gunRig);
+  const gunBody = (sx, sy, sz, z = 0) => part(soldierGeo.gunBody, gunMat, 0, 0, z, sx, sy, sz, gunRig);
+  const gunAccent = (sx, sy, sz, z) => part(soldierGeo.gunTip, accentMat, 0, 0, z, sx, sy, sz, gunRig);
   if (weaponId === "smg") {
-    part(soldierGeo.cube, gunMat, 0, 0, 0, .16, .18, .58, gunRig);
-    part(soldierGeo.cube, accentMat, 0, .02, -.36, .08, .08, .2, gunRig);
-    part(soldierGeo.cube, darkMat, -.05, -.16, .04, .11, .28, .14, gunRig);
+    gunBody(1.1, 1.1, .75); gunAccent(1, 1, .7, -.42);
+    part(soldierGeo.hand, darkMat, -.04, -.14, .06, .55, .9, .55, gunRig);
   } else if (weaponId === "shotgun") {
-    part(soldierGeo.cube, gunMat, 0, 0, -.06, .19, .16, .9, gunRig);
-    part(soldierGeo.cube, accentMat, 0, -.02, -.48, .2, .18, .22, gunRig);
+    gunBody(1.35, 1.2, 1.1, -.05); gunAccent(1.4, 1.3, .8, -.55);
   } else if (weaponId === "sniper") {
-    part(soldierGeo.cube, gunMat, 0, 0, -.12, .11, .13, 1.18, gunRig);
-    part(soldierGeo.cube, accentMat, 0, .13, -.18, .13, .1, .28, gunRig);
-    part(soldierGeo.cube, darkMat, -.05, -.16, .12, .1, .3, .13, gunRig);
+    gunBody(.9, .95, 1.45, -.1); gunAccent(1.1, 1, .9, -.7);
+    part(soldierGeo.hand, accentMat, 0, .12, -.15, .55, .4, .7, gunRig);
+    part(soldierGeo.hand, darkMat, -.04, -.14, .1, .5, .95, .5, gunRig);
   } else if (weaponId === "rocket") {
-    part(soldierGeo.cube, gunMat, 0, .02, -.06, .3, .28, 1.05, gunRig);
-    part(soldierGeo.cube, accentMat, 0, .02, -.63, .4, .38, .18, gunRig);
-    gunRig.position.y += .12;
+    gunBody(1.8, 1.6, 1.2, -.05); gunAccent(2.0, 1.8, .7, -.7);
+    gunRig.position.y += .1;
   } else if (weaponId === "laser") {
-    part(soldierGeo.cube, accentMat, 0, 0, -.08, .18, .18, .9, gunRig);
-    part(soldierGeo.cube, gunMat, 0, -.02, .28, .25, .22, .24, gunRig);
-    const coreMat = new THREE.MeshBasicMaterial({ color: weapon.color, toneMapped: false });
-    part(soldierGeo.cube, coreMat, 0, .02, -.58, .08, .08, .26, gunRig);
+    gunBody(1.2, 1.2, 1.05, -.05);
+    part(soldierGeo.gunBody, accentMat, 0, 0, -.08, 1.15, 1.15, 1.0, gunRig);
+    part(soldierGeo.hand, gunMat, 0, -.02, .28, .9, .8, .9, gunRig);
+    part(soldierGeo.gunTip, glowMat, 0, .02, -.62, 1.1, 1.1, 1.1, gunRig);
   } else {
-    part(soldierGeo.cube, gunMat, 0, 0, 0, .13, .14, .76, gunRig);
-    part(soldierGeo.cube, accentMat, 0, .035, -.48, .07, .07, .28, gunRig);
-    part(soldierGeo.cube, darkMat, -.05, -.16, .08, .10, .30, .13, gunRig);
+    gunBody(1, 1, .95); gunAccent(.9, .9, .85, -.48);
+    part(soldierGeo.hand, darkMat, -.04, -.14, .08, .5, .95, .5, gunRig);
   }
 
   g.userData.rig = rig;
@@ -465,7 +503,6 @@ function makeSoldier(mainColor, weaponId = "rifle", tier = 1) {
   g.userData.hit = 0;
   g.userData.spawnT = 1;
   g.userData.mergeT = 0;
-  // 缓存卡通身体材质引用,受击闪白时 O(1) 改 emissive,不用每帧 traverse
   const tintSet = new Set();
   g.traverse(o => { if (o.isMesh && o.material && o.material.isMeshToonMaterial) tintSet.add(o.material); });
   g.userData.tintMats = [...tintSet];
@@ -501,7 +538,11 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
   }
   if (ud.halo) {
     ud.halo.rotation.z += .045;
-    ud.halo.position.y = 2.12 + Math.sin(t * 4 + ud.phase) * .055;
+    ud.halo.position.y = 2.2 + Math.sin(t * 4 + ud.phase) * .055;
+  }
+  if (ud.head && !ud.mixer) {
+    ud.head.rotation.y = Math.sin(t * 1.2 + ud.phase) * .04;
+    ud.head.position.y = 1.72 + Math.sin(t * 2.4 + ud.phase) * .012;
   }
   if (ud.mergeT > 0) {
     ud.mergeT = Math.max(0, ud.mergeT - .035);
@@ -677,27 +718,50 @@ const muzzleMat = new THREE.SpriteMaterial({
   color: 0xffe783, transparent: true, depthWrite: false,
   blending: THREE.AdditiveBlending, toneMapped: false,
 });
-const TRAIL_FX_CAP = mobileDevice ? 280 : 500;
+const TRAIL_FX_CAP = quality.level === "low" ? 160 : mobileDevice ? 280 : 500;
+const trailSegPool = new ObjectPool(
+  () => new THREE.Mesh(segGeo, segMat),
+  mesh => { scene.remove(mesh); mesh.visible = false; mesh.scale.set(1, 1, 1); },
+  quality.level === "low" ? 40 : 80,
+);
+const muzzleSpritePool = new ObjectPool(
+  () => new THREE.Sprite(muzzleMat),
+  sprite => { scene.remove(sprite); sprite.visible = false; sprite.scale.set(1, 1, 1); },
+  24,
+);
 function addTrailSeg(x0, z0, x1, z1) {
   if (trailFx.length >= TRAIL_FX_CAP) return;
   const dx = x1 - x0, dz = z1 - z0;
-  const m = new THREE.Mesh(segGeo, segMat);
+  const m = trailSegPool.acquire();
+  m.visible = true;
   m.position.set((x0 + x1) / 2, 1.0, (z0 + z1) / 2);
   m.rotation.y = Math.atan2(dx, dz);
   m.scale.set(0.14, 0.14, Math.hypot(dx, dz) + 0.1);
   scene.add(m);
-  trailFx.push({ mesh: m, life: 10, maxLife: 10, w: 0.14 });
+  trailFx.push({ mesh: m, life: 10, maxLife: 10, w: 0.14, pooled: "trail" });
 }
 function addMuzzleFlash(x, z) {
   if (trailFx.length >= TRAIL_FX_CAP) return;
-  const m = new THREE.Sprite(muzzleMat);
+  const m = muzzleSpritePool.acquire();
+  m.visible = true;
+  m.material = muzzleMat;
   m.position.set(x, 1.0, z);
-  trailFx.push({ mesh: m, life: 5, maxLife: 5, w: rand(.9, 1.3), flash: true });
+  trailFx.push({ mesh: m, life: 5, maxLife: 5, w: rand(.9, 1.3), flash: true, pooled: "muzzle" });
   scene.add(m);
 }
 const particleGeo = new THREE.TetrahedronGeometry(0.19, 0);
 const pMatCache = {};
 function pMat(color) { return pMatCache[color] || (pMatCache[color] = new THREE.MeshBasicMaterial({ color, toneMapped: false })); }
+const particleMeshPool = new ObjectPool(
+  () => new THREE.Mesh(particleGeo, pMat(0xffffff)),
+  mesh => {
+    scene.remove(mesh);
+    mesh.visible = false;
+    mesh.scale.set(1, 1, 1);
+    mesh.rotation.set(0, 0, 0);
+  },
+  quality.level === "low" ? 48 : 96,
+);
 
 /* ============ 程序化渐变精灵贴图(一次生成,全局共享):软光晕/烟雾/软边冲击环 ============ */
 function makeRadialTex(size, stops) {
@@ -724,19 +788,28 @@ function sparkMat(color) {
     blending: THREE.AdditiveBlending, toneMapped: false,
   }));
 }
-const SPARK_CAP = mobileDevice ? 110 : 210;
+const SPARK_CAP = quality.level === "low" ? 60 : mobileDevice ? 110 : 210;
 let sparks = [];
+const sparkSpritePool = new ObjectPool(
+  () => new THREE.Sprite(sparkMat(0xffffff)),
+  sprite => { scene.remove(sprite); sprite.visible = false; sprite.scale.set(1, 1, 1); },
+  quality.level === "low" ? 24 : 48,
+);
 /* 光晕残影:复用 trailFx 生命周期(5-6 帧缩小消失),用于弹道拖尾与打击爆闪 */
 function addGlowGhost(x, y, z, color, w = .9) {
   if (trailFx.length >= TRAIL_FX_CAP) return;
-  const m = new THREE.Sprite(sparkMat(color));
+  const m = sparkSpritePool.acquire();
+  m.visible = true;
+  m.material = sparkMat(color);
   m.position.set(x, y, z);
-  trailFx.push({ mesh: m, life: 6, maxLife: 6, w, flash: true });
+  trailFx.push({ mesh: m, life: 6, maxLife: 6, w, flash: true, pooled: "spark" });
   scene.add(m);
 }
 function addSparks(x, y, z, color, n = 10, spd = .3) {
   for (let i = 0; i < n && sparks.length < SPARK_CAP; i++) {
-    const s = new THREE.Sprite(sparkMat(color));
+    const s = sparkSpritePool.acquire();
+    s.visible = true;
+    s.material = sparkMat(color);
     s.position.set(x, y, z);
     const sc = rand(.16, .4);
     s.scale.set(sc, sc, 1);
@@ -752,14 +825,31 @@ function addSparks(x, y, z, color, n = 10, spd = .3) {
 const smokeMatProto = new THREE.SpriteMaterial({
   map: smokeTex, color: 0x9aa4ad, transparent: true, depthWrite: false, opacity: .34, toneMapped: false,
 });
-const SMOKE_CAP = mobileDevice ? 22 : 44;
+const SMOKE_CAP = quality.level === "low" ? 12 : mobileDevice ? 22 : 44;
 let smokes = [];
+const smokeSpritePool = new ObjectPool(
+  () => {
+    const mat = smokeMatProto.clone();
+    const s = new THREE.Sprite(mat);
+    s.userData.mat = mat;
+    return s;
+  },
+  sprite => {
+    scene.remove(sprite);
+    sprite.visible = false;
+    sprite.scale.set(1, 1, 1);
+    if (sprite.userData.mat) sprite.userData.mat.opacity = .34;
+  },
+  12,
+);
 function addSmoke(x, y, z, n = 4, size = 1) {
   if (!quality.smoke) return;
   for (let i = 0; i < n && smokes.length < SMOKE_CAP; i++) {
-    const m = smokeMatProto.clone();
+    const s = smokeSpritePool.acquire();
+    const m = s.userData.mat;
     m.rotation = rand(0, Math.PI * 2);
-    const s = new THREE.Sprite(m);
+    m.opacity = .34;
+    s.visible = true;
     s.position.set(x + rand(-.4, .4), y + rand(0, .5), z + rand(-.4, .4));
     const sc = rand(.8, 1.4) * size;
     s.scale.set(sc, sc, 1);
@@ -768,14 +858,35 @@ function addSmoke(x, y, z, n = 4, size = 1) {
   }
 }
 let impactFx = [];
+const IMPACT_CAP = quality.level === "low" ? 12 : mobileDevice ? 20 : 34;
+const impactRingPool = new ObjectPool(
+  () => {
+    const material = new THREE.MeshBasicMaterial({
+      map: ringTex, color: 0xffffff, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false,
+      blending: THREE.AdditiveBlending, toneMapped: false,
+    });
+    const mesh = new THREE.Mesh(fxPlaneGeo, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.userData.material = material;
+    return mesh;
+  },
+  mesh => {
+    scene.remove(mesh);
+    mesh.visible = false;
+    mesh.scale.set(1, 1, 1);
+    mesh.userData.material.opacity = .8;
+  },
+  16,
+);
 function addImpactRing(x, y, z, color, size = 1.2, life = 22) {
-  if (impactFx.length > (mobileDevice ? 20 : 34)) return;
-  const material = new THREE.MeshBasicMaterial({
-    map: ringTex, color, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false,
-    blending: THREE.AdditiveBlending, toneMapped: false
-  });
-  const mesh = new THREE.Mesh(fxPlaneGeo, material);
-  mesh.position.set(x, y, z); mesh.rotation.x = -Math.PI / 2; mesh.scale.setScalar(.2);
+  if (impactFx.length >= IMPACT_CAP) return;
+  const mesh = impactRingPool.acquire();
+  const material = mesh.userData.material;
+  material.color.set(color);
+  material.opacity = .8;
+  mesh.visible = true;
+  mesh.position.set(x, y, z);
+  mesh.scale.setScalar(.2);
   scene.add(mesh);
   impactFx.push({ mesh, material, life, maxLife: life, size: size * 1.6 });
 }
@@ -840,17 +951,25 @@ function applyRankInsignia(mesh, rank) {
   const rig = mesh.userData.rig;
   if (!rig) return;
   const group = new THREE.Group();
-  group.position.set(-.23, 1.13, -.405);
-  const badgeMat = new THREE.MeshStandardMaterial({ color: rank >= 12 ? 0xffd66b : 0xc7e7ff, emissive: rank >= 12 ? 0x7a3d00 : 0x183e62, emissiveIntensity: .55, metalness: .55, roughness: .3 });
+  group.position.set(-.28, 1.18, -.38);
+  const badgeMat = new THREE.MeshToonMaterial({
+    color: rank >= 12 ? 0xffd66b : 0xc7e7ff,
+    gradientMap: TOON_RAMP,
+    emissive: rank >= 12 ? 0x7a3d00 : 0x183e62,
+    emissiveIntensity: .45,
+  });
   const bars = 1 + ((rank - 1) % 4);
   for (let i = 0; i < bars; i++) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(.075, .025, .025), badgeMat);
-    bar.position.set(i * .085, Math.floor((rank - 1) / 4) * .035, 0);
+    const bar = new THREE.Mesh(soldierGeo.hand, badgeMat);
+    bar.scale.set(.28, .18, .22);
+    bar.position.set(i * .1, Math.floor((rank - 1) / 4) * .08, 0);
     group.add(bar);
   }
   if (rank >= 9) {
-    const star = new THREE.Mesh(new THREE.OctahedronGeometry(.055, 0), badgeMat);
-    star.position.set(.13, .09, 0); group.add(star);
+    const star = new THREE.Mesh(soldierGeo.hand, badgeMat);
+    star.scale.set(.35, .35, .35);
+    star.position.set(.14, .12, 0);
+    group.add(star);
   }
   rig.add(group);
   mesh.userData.rankInsignia = group;
@@ -929,7 +1048,9 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function addParticles(x, y, z, color, n = 10, spd = 0.22) {
   const cap = quality.particleCap;
   for (let i = 0; i < n && particles.length < cap; i++) {
-    const m = new THREE.Mesh(particleGeo, pMat(color));
+    const m = particleMeshPool.acquire();
+    m.visible = true;
+    m.material = pMat(color);
     m.position.set(x, y, z);
     m.scale.setScalar(rand(0.75, 1.75));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
@@ -943,36 +1064,63 @@ function addParticles(x, y, z, color, n = 10, spd = 0.22) {
   }
 }
 
+const FLOAT_TEXT_CAP = quality.level === "low" ? 10 : mobileDevice ? 16 : 28;
+const floatTextCanvasPool = [];
+function acquireFloatCanvas() {
+  return floatTextCanvasPool.pop() || (() => {
+    const c = document.createElement("canvas");
+    c.width = 256; c.height = 64;
+    return c;
+  })();
+}
+function releaseFloatCanvas(c) {
+  if (floatTextCanvasPool.length < 24) floatTextCanvasPool.push(c);
+}
+
 function makeTextSprite(text, color, size = 4.6) {
-  const c = document.createElement("canvas");
-  c.width = 512; c.height = 128;
+  const c = acquireFloatCanvas();
   const g = c.getContext("2d");
-  g.font = "900 66px Microsoft YaHei";
+  g.clearRect(0, 0, c.width, c.height);
+  g.font = "900 40px Microsoft YaHei, PingFang SC, sans-serif";
   g.textAlign = "center"; g.textBaseline = "middle";
-  g.shadowColor = color; g.shadowBlur = 18;          // 彩色辉光,更"发光"
-  g.strokeStyle = "rgba(10,22,40,.92)"; g.lineWidth = 14;
-  g.strokeText(text, 256, 64);
+  g.shadowColor = color; g.shadowBlur = 12;
+  g.strokeStyle = "rgba(10,22,40,.92)"; g.lineWidth = 10;
+  g.strokeText(text, 128, 32);
   g.shadowBlur = 0;
   g.fillStyle = color;
-  g.fillText(text, 256, 64);
-  g.globalCompositeOperation = "lighter";            // 内芯提亮
+  g.fillText(text, 128, 32);
+  g.globalCompositeOperation = "lighter";
   g.fillStyle = "rgba(255,255,255,.35)";
-  g.fillText(text, 256, 64);
+  g.fillText(text, 128, 32);
   g.globalCompositeOperation = "source-over";
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, toneMapped: false }));
   sprite.scale.set(size, size * 0.25, 1);
+  sprite.userData.canvas = c;
   return sprite;
 }
 
 function addFloatText(x, y, z, text, color, size = 4.6) {
+  if (floatTexts.length >= FLOAT_TEXT_CAP) {
+    const oldest = floatTexts.shift();
+    if (oldest) releaseFloatText(oldest);
+  }
   const sprite = makeTextSprite(text, color, size);
   sprite.position.set(x, y, z);
   scene.add(sprite);
-  const baseScale = sprite.scale.clone();
+  const baseScale = { x: sprite.scale.x, y: sprite.scale.y };
   sprite.scale.multiplyScalar(.12);
   floatTexts.push({ sprite, life: 60, maxLife: 60, baseScale });
+}
+
+function releaseFloatText(ft) {
+  scene.remove(ft.sprite);
+  const map = ft.sprite.material.map;
+  const canvas = ft.sprite.userData.canvas;
+  ft.sprite.material.dispose();
+  if (map) map.dispose();
+  if (canvas) releaseFloatCanvas(canvas);
 }
 
 /* ================= 单人进化 ================= */
@@ -1695,43 +1843,72 @@ function makeBossModel(def, bossNumber) {
   const mesh = makeSoldier(def.color, weaponIds[(bossNumber - 1) % weaponIds.length], 5);
   mesh.scale.setScalar(2.65);
   const armorMat = new THREE.MeshToonMaterial({
-    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .22
+    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .22,
   });
   const coreMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false });
-  for (const side of [-1, 1]) {
-    const shoulder = new THREE.Mesh(new THREE.IcosahedronGeometry(.34, 0), armorMat);
-    shoulder.position.set(side * .58, 1.3, 0); mesh.userData.rig.add(shoulder);
-  }
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.18, 0), coreMat);
-  core.position.set(0, 1.05, -.39); mesh.userData.rig.add(core);
   const rig = mesh.userData.rig;
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Mesh(soldierGeo.hand, armorMat);
+    shoulder.scale.set(2.2, 1.8, 2.0);
+    shoulder.position.set(side * .62, 1.32, 0);
+    rig.add(shoulder);
+  }
+  const core = new THREE.Mesh(soldierGeo.hand, coreMat);
+  core.scale.set(1.1, 1.1, 1.1);
+  core.position.set(0, 1.08, -.42);
+  rig.add(core);
   if (def.theme === "tank") {
     for (const side of [-1, 1]) {
-      const cannon = new THREE.Mesh(new THREE.CylinderGeometry(.11, .18, 1.25, 10), armorMat);
-      cannon.rotation.x = Math.PI / 2; cannon.position.set(side * .62, 1.45, -.65); rig.add(cannon);
+      const cannon = new THREE.Mesh(soldierGeo.gunBody, armorMat);
+      cannon.scale.set(1.4, 1.4, 1.8);
+      cannon.rotation.x = Math.PI / 2;
+      cannon.position.set(side * .58, 1.48, -.7);
+      rig.add(cannon);
     }
-    const turret = new THREE.Mesh(new THREE.BoxGeometry(1.05, .35, .72), armorMat); turret.position.set(0, 1.62, .08); rig.add(turret);
+    const turret = new THREE.Mesh(soldierGeo.torso, armorMat);
+    turret.scale.set(1.4, .55, 1.1);
+    turret.position.set(0, 1.68, .05);
+    rig.add(turret);
   } else if (def.theme === "shield") {
-    const shield = new THREE.Mesh(new THREE.CylinderGeometry(.82, .82, .18, 8), armorMat);
-    shield.rotation.x = Math.PI / 2; shield.position.set(0, 1.05, -.72); rig.add(shield);
-    const shieldCore = new THREE.Mesh(new THREE.RingGeometry(.32, .58, 18), coreMat); shieldCore.position.set(0, 1.05, -.83); rig.add(shieldCore);
+    const shield = new THREE.Mesh(soldierGeo.torso, armorMat);
+    shield.scale.set(1.9, 1.9, .35);
+    shield.position.set(0, 1.08, -.72);
+    rig.add(shield);
+    const shieldCore = new THREE.Mesh(new THREE.RingGeometry(.28, .52, 22), coreMat);
+    shieldCore.position.set(0, 1.08, -.9);
+    rig.add(shieldCore);
   } else if (def.theme === "sniper") {
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.08, .12, 2.6, 10), armorMat);
-    barrel.rotation.x = Math.PI / 2; barrel.position.set(.28, 1.25, -1.1); rig.add(barrel);
-    const scope = new THREE.Mesh(new THREE.SphereGeometry(.18, 10, 7), coreMat); scope.position.set(.28, 1.52, -.42); rig.add(scope);
+    const barrel = new THREE.Mesh(soldierGeo.gunBody, armorMat);
+    barrel.scale.set(1.0, 1.0, 2.6);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(.28, 1.28, -1.05);
+    rig.add(barrel);
+    const scope = new THREE.Mesh(soldierGeo.hand, coreMat);
+    scope.scale.set(1.2, 1.2, 1.2);
+    scope.position.set(.28, 1.55, -.4);
+    rig.add(scope);
   } else if (def.theme === "rocket") {
     for (const side of [-1, 1]) {
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(.56, .72, .92), armorMat); pod.position.set(side * .72, 1.45, .18); rig.add(pod);
+      const pod = new THREE.Mesh(soldierGeo.torso, armorMat);
+      pod.scale.set(.85, 1.0, 1.15);
+      pod.position.set(side * .72, 1.42, .15);
+      rig.add(pod);
       for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
-        const tube = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .3, 8), coreMat);
-        tube.rotation.x = Math.PI / 2; tube.position.set(side * .72 + (col - .5) * .22, 1.3 + row * .24, -.36); rig.add(tube);
+        const tube = new THREE.Mesh(soldierGeo.gunTip, coreMat);
+        tube.scale.set(1.1, 1.1, 1.2);
+        tube.rotation.x = Math.PI / 2;
+        tube.position.set(side * .72 + (col - .5) * .2, 1.28 + row * .22, -.38);
+        rig.add(tube);
       }
     }
   } else if (def.theme === "energy") {
     for (let i = 0; i < 3; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(.72 + i * .18, .035, 6, 28), coreMat);
-      ring.position.set(0, 1.2, .2); ring.rotation.set(Math.PI / 2, i * .7, i * .4); rig.add(ring);
-      mesh.userData.energyRings ||= []; mesh.userData.energyRings.push(ring);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(.68 + i * .16, .04, 8, 28), coreMat);
+      ring.position.set(0, 1.22, .15);
+      ring.rotation.set(Math.PI / 2, i * .7, i * .4);
+      rig.add(ring);
+      mesh.userData.energyRings ||= [];
+      mesh.userData.energyRings.push(ring);
     }
   }
   mesh.userData.bossCore = core;
@@ -2200,13 +2377,16 @@ function update() {
   for (const b of bullets) {
     b.mesh.position.z -= b.speed || 1.2;
     b.mesh.position.x += b.vx;
-    if (frame % 2 === 0) {                              // 每 2 帧铺一段残影,连成扫射光轨
+    if (frame % 2 === 0) {
       addTrailSeg(b.px, b.pz, b.mesh.position.x, b.mesh.position.z);
       b.px = b.mesh.position.x; b.pz = b.mesh.position.z;
     }
   }
-  bullets = bullets.filter(b => {
-    if (b.mesh.position.z < SPAWN_Z - 15 || b.dead) { bulletMeshPool.release(b.mesh); return false; }
+  compactInPlace(bullets, b => {
+    if (b.mesh.position.z < SPAWN_Z - 15 || b.dead) {
+      bulletMeshPool.release(b.mesh);
+      return false;
+    }
     return true;
   });
 
@@ -2251,7 +2431,7 @@ function update() {
       else m.opacity = (i % 2 === 0 ? .24 : .09) + Math.sin(t * 5 + g.phase + i) * .045;
     });
   }
-  gates = gates.filter(g => {
+  compactInPlace(gates, g => {
     if (g.group.position.z > 12) { disposeGate(g); return false; }
     return true;
   });
@@ -2287,7 +2467,7 @@ function update() {
       }
     }
   }
-  traps = traps.filter(trap => {
+  compactInPlace(traps, trap => {
     if (trap.mesh.position.z > 12) { disposeTrap(trap); return false; }
     return true;
   });
@@ -2339,7 +2519,7 @@ function update() {
       applyReward(core.reward, core.mesh.position.x, core.mesh.position.z);
     }
   }
-  rewardCores = rewardCores.filter(core => {
+  compactInPlace(rewardCores, core => {
     if (core.collected || core.life <= 0 || core.mesh.position.z > 10) {
       disposeRewardCore(core);
       return false;
@@ -2347,11 +2527,18 @@ function update() {
     return true;
   });
 
-  /* 子弹命中 */
+  /* 子弹命中:按 Z 分桶减少子弹×敌人全量二重循环 */
+  const enemyBuckets = new Map();
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const key = Math.floor(e.mesh.position.z / 4);
+    let bucket = enemyBuckets.get(key);
+    if (!bucket) { bucket = []; enemyBuckets.set(key, bucket); }
+    bucket.push(e);
+  }
   for (const b of bullets) {
     if (b.dead) continue;
     const bp = b.mesh.position;
-    // 箱子
     for (const c of crates) {
       if (c.count <= 0) continue;
       const cp = c.mesh.position;
@@ -2367,7 +2554,6 @@ function update() {
       }
     }
     if (b.dead) continue;
-    // Boss
     if (boss && !b.hitIds?.has("boss")) {
       const ep = boss.mesh.position;
       if (Math.abs(bp.x - ep.x) < 2.35 && Math.abs(bp.z - ep.z) < 2.5) {
@@ -2383,40 +2569,48 @@ function update() {
       }
     }
     if (b.dead) continue;
-    // 敌人
-    for (const e of enemies) {
-      if (e.dead || b.hitIds?.has(e.id)) continue;
-      const ep = e.mesh.position;
-      const r = e.radius;
-      if (Math.abs(bp.x - ep.x) < r && Math.abs(bp.z - ep.z) < r + 0.3) {
-        if (b.type === "rocket" || b.starburst) {
-          b.dead = true;
-          explodeProjectile(b, ep.x, ep.z, e.id);
+    const bKey = Math.floor(bp.z / 4);
+    for (let bk = bKey - 1; bk <= bKey + 1; bk++) {
+      const bucket = enemyBuckets.get(bk);
+      if (!bucket) continue;
+      for (const e of bucket) {
+        if (e.dead || b.hitIds?.has(e.id)) continue;
+        const ep = e.mesh.position;
+        const r = e.radius;
+        if (Math.abs(bp.x - ep.x) < r && Math.abs(bp.z - ep.z) < r + 0.3) {
+          if (b.type === "rocket" || b.starburst) {
+            b.dead = true;
+            explodeProjectile(b, ep.x, ep.z, e.id);
+            break;
+          }
+          b.hitIds?.add(e.id);
+          b.pierce--;
+          if (b.pierce <= 0) b.dead = true;
+          let dmg = b.dmg;
+          const critChance = Math.min(.75, skillLevel(player.skills, "critical") * .06 + (critT > 0 ? .35 : 0));
+          const crit = Math.random() < critChance;
+          if (crit) dmg *= 2;
+          e.hp -= dmg;
+          e.mesh.userData.hit = 1;
+          drawHpLabel(e);
+          const ty = e.type === "heavy" ? 4.4 : 3.0;
+          if (crit) addFloatText(ep.x, ty, ep.z, "暴击 -" + dmg, "#ffb300", 3.6);
+          else      addFloatText(ep.x, ty, ep.z, "-" + dmg, "#ff7043", 2.6);
+          addParticles(bp.x, 1.1, bp.z, crit ? "#ffcf45" : "#ff685c", crit ? 8 : 4, 0.17);
+          if (crit) addImpactRing(bp.x, 1.05, bp.z, 0xffc83d, 1.15);
+          addShake(0.02);
+          if (e.hp <= 0) killEnemy(e);
           break;
         }
-        b.hitIds?.add(e.id);
-        b.pierce--;
-        if (b.pierce <= 0) b.dead = true;
-        let dmg = b.dmg;
-        const critChance = Math.min(.75, skillLevel(player.skills, "critical") * .06 + (critT > 0 ? .35 : 0));
-        const crit = Math.random() < critChance;
-        if (crit) dmg *= 2;
-        e.hp -= dmg;
-        e.mesh.userData.hit = 1;
-        drawHpLabel(e);                                                   // 实时刷新头顶血量
-        const ty = e.type === "heavy" ? 4.4 : 3.0;
-        if (crit) addFloatText(ep.x, ty, ep.z, "暴击 -" + dmg, "#ffb300", 3.6);
-        else      addFloatText(ep.x, ty, ep.z, "-" + dmg, "#ff7043", 2.6);
-        addParticles(bp.x, 1.1, bp.z, crit ? "#ffcf45" : "#ff685c", crit ? 8 : 4, 0.17);
-        if (crit) addImpactRing(bp.x, 1.05, bp.z, 0xffc83d, 1.15);
-        addShake(0.02);                                                   // 命中微震
-        if (e.hp <= 0) killEnemy(e);
-        break;
       }
+      if (b.dead) break;
     }
   }
-  bullets = bullets.filter(b => { if (b.dead) { bulletMeshPool.release(b.mesh); return false; } return true; });
-  crates = crates.filter(c => {
+  compactInPlace(bullets, b => {
+    if (b.dead) { bulletMeshPool.release(b.mesh); return false; }
+    return true;
+  });
+  compactInPlace(crates, c => {
     if (c.collected || c.mesh.position.z > 12) {
       disposeCrate(c);
       return false;
@@ -2425,38 +2619,42 @@ function update() {
   });
 
   /* 敌人碰撞主角 */
-  const collisionUnits = player.soldiers.slice(0, 1);
-  for (const e of enemies) {
-    if (e.dead) continue;
-    const ep = e.mesh.position;
-    if (ep.z < PLAYER_Z - 1.6 || ep.z > PLAYER_Z + 2.4) continue;
-    for (let i = 0; i < pos.length; i++) {
-      const p = pos[i], unit = collisionUnits[i];
-      if (!unit || !player.soldiers.includes(unit)) continue;
-      const dx = ep.x - p.x, dz = ep.z - p.z;
+  const hero = heroUnit();
+  if (hero) {
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const ep = e.mesh.position;
+      if (ep.z < PLAYER_Z - 1.6 || ep.z > PLAYER_Z + 2.4) continue;
+      const dx = ep.x - player.x, dz = ep.z - PLAYER_Z;
       if (dx * dx + dz * dz < 1.4) {
         e.dead = true;
         addParticles(ep.x, 1.2, ep.z, "#90caf9", 12, 0.3);
         hurtHero(e.contactDmg, "敌人撞击", "#ff5252", true, ARMOR_SHARES.standard, "contact");
-        break;
       }
     }
   }
-  enemies = enemies.filter(e => {
+  compactInPlace(enemies, e => {
     if (e.dead || e.mesh.position.z > 10) { removeEnemy(e); return false; }
     return true;
   });
 
   if (player.soldiers.length <= 0 && running) { endGame(); return; }
 
-  /* 弹道残影 / 枪口火光渐隐(收窄至消失) */
+  /* 弹道残影 / 枪口火光渐隐 */
   for (const s of trailFx) {
     s.life--;
     const k = Math.max(s.life / s.maxLife, 0);
     if (s.flash) s.mesh.scale.setScalar(s.w * k);
     else { s.mesh.scale.x = s.mesh.scale.y = s.w * k; }
   }
-  trailFx = trailFx.filter(s => { if (s.life <= 0) { scene.remove(s.mesh); return false; } return true; });
+  compactInPlace(trailFx, s => {
+    if (s.life > 0) return true;
+    if (s.pooled === "trail") trailSegPool.release(s.mesh);
+    else if (s.pooled === "muzzle") muzzleSpritePool.release(s.mesh);
+    else if (s.pooled === "spark") sparkSpritePool.release(s.mesh);
+    else scene.remove(s.mesh);
+    return false;
+  });
 
   /* 冲击波 */
   for (const fx of impactFx) {
@@ -2467,9 +2665,10 @@ function update() {
     fx.mesh.material.opacity = k * .72;
     fx.mesh.position.y += .004;
   }
-  impactFx = impactFx.filter(fx => {
-    if (fx.life <= 0) { scene.remove(fx.mesh); fx.material.dispose(); return false; }
-    return true;
+  compactInPlace(impactFx, fx => {
+    if (fx.life > 0) return true;
+    impactRingPool.release(fx.mesh);
+    return false;
   });
 
   /* 粒子 */
@@ -2485,9 +2684,13 @@ function update() {
     p.vx *= .99; p.vz *= .99;
     p.life--;
   }
-  particles = particles.filter(p => { if (p.life <= 0) { scene.remove(p.mesh); return false; } return true; });
+  compactInPlace(particles, p => {
+    if (p.life > 0) return true;
+    particleMeshPool.release(p.mesh);
+    return false;
+  });
 
-  /* 火花:强重力光点,快速熄灭 */
+  /* 火花 */
   for (const s of sparks) {
     s.mesh.position.x += s.vx;
     s.mesh.position.y += s.vy;
@@ -2497,16 +2700,24 @@ function update() {
     s.mesh.scale.multiplyScalar(.93);
     s.life--;
   }
-  sparks = sparks.filter(s => { if (s.life <= 0 || s.mesh.position.y < 0) { scene.remove(s.mesh); return false; } return true; });
+  compactInPlace(sparks, s => {
+    if (s.life > 0 && s.mesh.position.y >= 0) return true;
+    sparkSpritePool.release(s.mesh);
+    return false;
+  });
 
-  /* 烟雾:膨胀上升淡出 */
+  /* 烟雾 */
   for (const s of smokes) {
     s.mesh.position.y += s.vy;
     s.mesh.scale.multiplyScalar(s.grow);
     s.life--;
     s.mat.opacity = Math.min(.34, s.life / s.maxLife * .4);
   }
-  smokes = smokes.filter(s => { if (s.life <= 0) { scene.remove(s.mesh); s.mat.dispose(); return false; } return true; });
+  compactInPlace(smokes, s => {
+    if (s.life > 0) return true;
+    smokeSpritePool.release(s.mesh);
+    return false;
+  });
 
   /* 浮动文字 */
   for (const ft of floatTexts) {
@@ -2518,13 +2729,10 @@ function update() {
     ft.life--;
     ft.sprite.material.opacity = clamp(ft.life / 30, 0, 1);
   }
-  floatTexts = floatTexts.filter(ft => {
-    if (ft.life <= 0) {
-      scene.remove(ft.sprite);
-      ft.sprite.material.map.dispose(); ft.sprite.material.dispose();
-      return false;
-    }
-    return true;
+  compactInPlace(floatTexts, ft => {
+    if (ft.life > 0) return true;
+    releaseFloatText(ft);
+    return false;
   });
 
   /* 摄像机 trauma 震动:取平方 + 平滑正弦噪声,比白噪声抖动更有冲击感、不发"麻" */
@@ -2605,7 +2813,10 @@ let airstrikeResolving = false;
 function triggerAirstrike(level) {
   if (airstrikeResolving) return;
   airstrikeResolving = true;
-  const targets = enemies.filter(enemy => !enemy.dead).sort((a, b) => a.mesh.position.z - b.mesh.position.z).slice(0, 2 + level * 2);
+  const alive = [];
+  for (const enemy of enemies) if (!enemy.dead) alive.push(enemy);
+  alive.sort((a, b) => a.mesh.position.z - b.mesh.position.z);
+  const targets = alive.slice(0, 2 + level * 2);
   addFloatText(player.x, 5.2, -8, "空袭支援!", "#ffb25f", 5.8);
   flashScreen("#ffb25f", .28); addShake(.3);
   for (const target of targets) {
@@ -2674,8 +2885,15 @@ function updateDrones(t) {
     drone.userData.fireCd--;
     if (drone.userData.fireCd > 0) return;
     drone.userData.fireCd = Math.max(24, 48 - skillLevel(player.skills, "drone") * 6);
-    const target = boss || enemies.filter(enemy => !enemy.dead).sort((a, b) => b.mesh.position.z - a.mesh.position.z)[0];
-    const targetPos = target?.mesh?.position || new THREE.Vector3(drone.position.x, 0, -40);
+    let target = boss;
+    if (!target) {
+      let bestZ = -Infinity;
+      for (const enemy of enemies) {
+        if (enemy.dead) continue;
+        if (enemy.mesh.position.z > bestZ) { bestZ = enemy.mesh.position.z; target = enemy; }
+      }
+    }
+    const targetPos = target?.mesh?.position || { x: drone.position.x, y: 0, z: -40 };
     const dz = Math.max(1, drone.position.z - targetPos.z);
     const vx = clamp((targetPos.x - drone.position.x) / (dz / 1.55), -.3, .3);
     const mesh = bulletMeshPool.acquire();
@@ -2878,10 +3096,18 @@ window.addEventListener("appinstalled", () => {
   installTip.classList.add("hidden");
 });
 
+function releaseTrailFx(s) {
+  if (s.pooled === "trail") trailSegPool.release(s.mesh);
+  else if (s.pooled === "muzzle") muzzleSpritePool.release(s.mesh);
+  else if (s.pooled === "spark") sparkSpritePool.release(s.mesh);
+  else scene.remove(s.mesh);
+}
+
 function clearWorld() {
   bullets.forEach(b => bulletMeshPool.release(b.mesh));
-  for (const a of [particles, trailFx]) a.forEach(o => scene.remove(o.mesh));
-  impactFx.forEach(fx => { scene.remove(fx.mesh); fx.material.dispose(); });
+  particles.forEach(p => particleMeshPool.release(p.mesh));
+  trailFx.forEach(releaseTrailFx);
+  impactFx.forEach(fx => impactRingPool.release(fx.mesh));
   impactFx = [];
   enemies.forEach(removeEnemy);
   crates.forEach(disposeCrate);
@@ -2900,9 +3126,9 @@ function clearWorld() {
   bossProjectiles.forEach(disposeBossProjectile);
   bossProjectiles = [];
   bossBarEl.classList.add("hidden");
-  floatTexts.forEach(ft => { scene.remove(ft.sprite); ft.sprite.material.map.dispose(); ft.sprite.material.dispose(); });
-  sparks.forEach(s => scene.remove(s.mesh));
-  smokes.forEach(s => { scene.remove(s.mesh); s.mat.dispose(); });
+  floatTexts.forEach(releaseFloatText);
+  sparks.forEach(s => sparkSpritePool.release(s.mesh));
+  smokes.forEach(s => smokeSpritePool.release(s.mesh));
   bullets = []; enemies = []; crates = []; rewardCores = []; enemyAimHazards = []; particles = []; floatTexts = []; trailFx = [];
   sparks = []; smokes = []; hitStopT = 0;
 }
