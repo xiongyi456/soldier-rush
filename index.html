@@ -251,9 +251,10 @@
       司令功勋圆满后可<b style="color:#ffd86b">授勋转生</b>，获得永久加成</p>
   <div class="big" id="resultText"></div>
   <p id="progressText" class="progress-text"></p>
-  <button id="startBtn">开始游戏</button>
+  <button id="startBtn" disabled>资源加载中…</button>
   <button id="installBtn" class="secondary hidden">安装到手机桌面</button>
   <p id="installTip" class="install-tip">手机浏览器打开后，可从浏览器菜单选择“添加到主屏幕”</p>
+  <p id="loadStatus" class="install-tip">首次打开约需几秒下载 3D 资源，请稍候</p>
   <p id="buildTag" class="build-tag"></p>
  </div>
 </div>
@@ -291,20 +292,76 @@
 <script>
 window.addEventListener("DOMContentLoaded", function () {
   var button = document.getElementById("startBtn");
+  var statusEl = document.getElementById("loadStatus");
+  var loading = document.getElementById("loadingScreen");
   if (!button) return;
+
+  function setStatus(text) {
+    if (statusEl) statusEl.textContent = text || "";
+  }
+
+  function markReady() {
+    window.__soldierRushReady = true;
+    button.disabled = false;
+    if (button.textContent.indexOf("再来") < 0) button.textContent = "开始游戏";
+    setStatus("");
+    if (loading) loading.classList.add("done");
+  }
+
+  function markFailed(detail) {
+    button.disabled = false;
+    button.textContent = "点我重试刷新";
+    setStatus(detail || "加载失败，请检查网络后刷新");
+    if (loading) {
+      var card = loading.querySelector(".loading-card");
+      if (card) card.innerHTML = "加载失败<br><small>" + (detail || "请刷新重试") + "</small>";
+      loading.classList.remove("done");
+    }
+  }
+
+  // Capture-phase guard: only allow real start after game module is ready.
   button.addEventListener("click", function (event) {
     if (window.__soldierRushReady) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (location.protocol === "file:") {
-      alert("新版游戏不能直接双击 index.html。请运行 start-mobile-server.ps1，或在本目录执行 npm run dev 后再打开终端显示的网址。");
-    } else {
-      alert("游戏脚本尚未加载完成。请强制刷新页面；如果是 GitHub Pages，请确认 Pages 已部署 Actions 生成的版本。");
+      markFailed("请勿直接打开 html 文件。在电脑运行 npm run dev，手机访问同一 Wi‑Fi 下的地址。");
+      return;
     }
+    if (button.textContent.indexOf("重试") >= 0) {
+      location.reload();
+      return;
+    }
+    setStatus("还在下载 3D 资源，请再等几秒…");
   }, true);
-  setTimeout(function () {
-    if (!window.__soldierRushReady && location.protocol === "file:") button.textContent = "请先启动本地服务器";
-  }, 1200);
+
+  if (location.protocol === "file:") {
+    markFailed("请用本地服务器打开，不要双击 html。");
+    return;
+  }
+
+  // Poll until game sets ready (mobile can take longer for three.js).
+  var waited = 0;
+  var timer = setInterval(function () {
+    waited += 250;
+    if (window.__soldierRushReady) {
+      clearInterval(timer);
+      markReady();
+      return;
+    }
+    if (waited === 3000) setStatus("手机首次加载较慢，请继续等待…");
+    if (waited === 8000) setStatus("仍在加载，请保持页面打开…");
+    if (waited >= 20000) {
+      clearInterval(timer);
+      markFailed("超过 20 秒仍未就绪。请强制刷新，或清除本站缓存后再试。");
+    }
+  }, 250);
+
+  // If game already booted before this script ran.
+  if (window.__soldierRushReady) {
+    clearInterval(timer);
+    markReady();
+  }
 });
 </script>
 <script type="module" src="/src/main.ts"></script>

@@ -3857,9 +3857,7 @@ function endGame() {
   overlay.classList.add("game-over");
   overlay.classList.remove("hidden");
 }
-startBtn?.addEventListener("click", () => { if (!running) startGame(); });
-(globalThis as any).__soldierRushReady = true;
-if (startBtn) startBtn.textContent = "开始游戏";
+startBtn?.addEventListener("click", () => { if (!running && (globalThis as any).__soldierRushReady) startGame(); });
 
 /* ================= 主循环 ================= */
 let lastLoopTime = performance.now();
@@ -3894,7 +3892,7 @@ function loop(now = performance.now()) {
     if (demoSoldier.parent) {
       animateWalk(demoSoldier, t, 2.2, .12, Math.sin(t * .5) * .12);   // 舒缓待机而非行军
       demoSoldier.rotation.y = Math.sin(t * .4) * .22;
-      demoSoldier.userData.rig.position.y += Math.sin(t * 1.6) * .03;  // 呼吸起伏
+      if (demoSoldier.userData.rig) demoSoldier.userData.rig.position.y += Math.sin(t * 1.6) * .03;
     }
   }
   composer.render();
@@ -3910,8 +3908,18 @@ scene.add(demoSoldier);
 const buildTagEl = document.getElementById("buildTag");
 if (buildTagEl) buildTagEl.textContent = `版本 ${__BUILD_TIME__} · v2`;
 
+// Mark ready only after first frame rendered (WebGL context is alive).
 loop();
-requestAnimationFrame(() => document.getElementById("loadingScreen")?.classList.add("done"));
+requestAnimationFrame(() => {
+  (globalThis as any).__soldierRushReady = true;
+  if (startBtn) {
+    startBtn.disabled = false;
+    if (!startBtn.textContent || /加载|资源/.test(startBtn.textContent)) startBtn.textContent = "开始游戏";
+  }
+  const loadStatus = document.getElementById("loadStatus");
+  if (loadStatus) loadStatus.textContent = "";
+  document.getElementById("loadingScreen")?.classList.add("done");
+});
 void hydrateNativeSave().then(nativeSave => {
   if (!nativeSave) return;
   saveData = nativeSave;
