@@ -61,11 +61,11 @@ export interface RewardCore<TReward = unknown> {
  * Early fodder is soft; after Boss1, game.ts multiplies via powerScale so they track player AS/ATK.
  */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [1.0, 1.5],
-  normal: [1.9, 3.0],
-  gunner: [3.5, 5.2],
-  shield: [4.5, 6.5],
-  heavy: [7.0, 10.5],
+  fodder: [1.2, 1.8],
+  normal: [2.4, 3.6],
+  gunner: [4.2, 6.0],
+  shield: [5.5, 7.8],
+  heavy: [8.5, 12.5],
 };
 
 export function heroMaxHealth(rank: number): number {
@@ -103,7 +103,8 @@ export function enemyHealth(
   const [minHits, maxHits] = ENEMY_HIT_RANGES[archetype];
   const hits = minHits + (maxHits - minHits) * Math.max(0, Math.min(1, roll));
   const shots = Math.max(1, shotCount);
-  const volley = 1 + Math.log2(shots) * .4;
+  // 多弹道更容易叠伤，额外抬血
+  const volley = 1 + Math.log2(shots) * .55 + Math.max(0, shots - 1) * .08;
   const scale = Math.max(.85, powerScale);
   return Math.max(1, Math.ceil(standardProjectileDamage * hits * volley * scale));
 }

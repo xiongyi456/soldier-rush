@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-15";
+const BUILD_VERSION = "mg-road-16";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -1318,33 +1318,61 @@ function evolveHero(nextRank = player.level) {
 }
 
 /**
- * 小怪耐久跟踪武器强度。
- * 前中期(≤4级)轻度跟随，保证开局好打；
- * 5 级起强跟随攻速/攻击/阶段，避免后期秒杀看不见怪。
+ * 小怪耐久按「当前枪的综合输出」缩放。
+ * - 单发伤害已在 enemyHealth 里用 shotDamage 对齐
+ * - 这里补：攻速、弹道数、穿透、弹射、暴击、军衔阶段、Boss 进度
+ * 目标：开局约 1～2 枪，4 级后正常怪 3～5 枪，别秒杀也别打不动。
  */
 function enemyPowerScale() {
-  const mid = player.level >= 5;
-  const atkBonus = Math.max(0, player.damageBonus);
-  const as = 1 / Math.max(.42, player.fireRateMul);
-  const asBonus = Math.max(0, as - 1);
-  const atkW = mid ? .95 : .35;
-  const asW = mid ? .85 : .25;
-  const power = 1 + atkBonus * atkW + asBonus * asW;
+  const mid = player.level >= 4;
+  const late = player.level >= 7;
+  const shots = Math.max(1, inheritedShotDirections().length);
+  const interval = Math.max(5, effectiveFireInterval());
+  const baseInterval = 10; // 机关枪基础间隔
+  const asRatio = baseInterval / interval; // 1 → 2+
+  const pierce = 1 + skillLevel(player.skills, "pierce");
+  const ricochet = skillLevel(player.skills, "ricochet");
+  const crit = skillLevel(player.skills, "critical");
+  const split = skillLevel(player.skills, "split");
+  const firepower = skillLevel(player.skills, "firepower");
+  const reload = skillLevel(player.skills, "reload");
   const stage = weaponStageForRank(player.level);
-  const stageW = mid ? .12 : .03;
-  // 技能火力也计入一部分（firepower skill）
-  const skillFp = 1 + skillLevel(player.skills, "firepower") * (mid ? .08 : .03);
-  const postBoss = bossCount <= 0 ? 1 : 1 + bossCount * (mid ? .12 : .06);
-  // 5 级后保底血量下限抬高，杜绝“肉眼看不见就死”
-  const floor = mid ? 1.55 : .9;
-  return Math.max(floor, power * (1 + (stage - 1) * stageW) * skillFp * postBoss);
+
+  // 权重：4 级前轻跟，4 级后重跟（秒杀主因是攻速+多弹+穿透）
+  const asW = mid ? 1.05 : .4;
+  const shotW = mid ? .45 : .18;
+  const pierceW = mid ? .28 : .1;
+  const skillW = mid ? .14 : .05;
+  const atkW = mid ? .55 : .2; // damageBonus 已部分进 shotDamage，再补体积火力
+
+  let scale = 1;
+  scale *= 1 + Math.max(0, asRatio - 1) * asW;
+  scale *= 1 + Math.max(0, shots - 1) * shotW;
+  scale *= 1 + Math.max(0, pierce - 1) * pierceW;
+  scale *= 1 + ricochet * skillW;
+  scale *= 1 + crit * (skillW * .7);
+  scale *= 1 + split * (skillW * .9);
+  scale *= 1 + firepower * (skillW * .6);
+  scale *= 1 + reload * (skillW * .5);
+  scale *= 1 + Math.max(0, player.damageBonus) * atkW;
+  scale *= 1 + Math.max(0, stage - 1) * (mid ? .11 : .04);
+  scale *= 1 + bossCount * (mid ? .14 : .07);
+  // 齐射/僚机额外压力
+  scale *= 1 + skillLevel(player.skills, "salvo") * (mid ? .12 : .04);
+  scale *= 1 + skillLevel(player.skills, "drone") * (mid ? .1 : .03);
+
+  const floor = late ? 2.2 : mid ? 1.65 : .95;
+  const cap = late ? 14 : mid ? 10 : 4;
+  return Math.min(cap, Math.max(floor, scale));
 }
 
 function spawnEnemyHp(type, roll = Math.random(), elite = false) {
   const shotDamage = standardProjectileDamage();
   const shotCount = Math.max(1, inheritedShotDirections().length);
-  const base = enemyHealth(type, shotDamage, roll, shotCount, enemyPowerScale());
-  return Math.max(1, Math.ceil(base * (elite ? 1.85 : 1)));
+  // 4 级后同档血量再略抬，保证多弹道也不会一帧蒸发
+  const rankMul = player.level >= 7 ? 1.25 : player.level >= 4 ? 1.12 : 1;
+  const base = enemyHealth(type, shotDamage, roll, shotCount, enemyPowerScale() * rankMul);
+  return Math.max(1, Math.ceil(base * (elite ? 1.9 : 1)));
 }
 
 function retuneLivingEnemies() {
@@ -1564,6 +1592,10 @@ function tryDropKillSkillChip(e, x, z) {
     hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
   }
   if (skill.id === "drone") syncDrones();
+  if (skill.id === "salvo") salvoCd = Math.min(salvoCd || 90, 90);
+  if (["firepower", "reload", "pierce", "split", "critical", "ricochet", "salvo", "drone"].includes(skill.id)) {
+    retuneLivingEnemies();
+  }
   const color = skill.category === "attack" ? "#ff8a65" : skill.category === "defense" ? "#66e7ff" : "#d7a4ff";
   addImpactRing(x, .1, z, new THREE.Color(color).getHex(), 2.4);
   addFloatText(x, 3.6, z, `${skill.icon} ${skill.name} Lv.${player.skills[skill.id]}`, color, 5.2);
@@ -1868,6 +1900,9 @@ function gateGrantSkill(skillId) {
   }
   if (skillId === "drone") syncDrones();
   if (skillId === "salvo") salvoCd = Math.min(salvoCd || 90, 90);
+  if (["firepower", "reload", "pierce", "split", "critical", "ricochet", "salvo", "drone"].includes(skillId)) {
+    retuneLivingEnemies();
+  }
   addFloatText(player.x, 4.0, PLAYER_Z - 1, `${def.icon} ${def.name} Lv.${player.skills[skillId]}`, "#ffe27a", 5.0);
 }
 const GATE_BUFFS = [
@@ -3818,6 +3853,7 @@ function selectSkill(index) {
   }
   syncDrones();
   if (skill.id === "salvo") salvoCd = Math.min(salvoCd || 90, 90);
+  retuneLivingEnemies();
   const color = skill.category === "attack" ? 0xff754d : skill.category === "defense" ? 0x66e7ff : 0xbc8cff;
   addParticles(player.x, 1.5, PLAYER_Z, `#${color.toString(16).padStart(6, "0")}`, mobileDevice ? 28 : 46, .38);
   addImpactRing(player.x, .08, PLAYER_Z, color, 5.4);
