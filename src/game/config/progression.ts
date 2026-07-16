@@ -7,24 +7,25 @@ export interface RankDefinition {
   weapon?: WeaponId;
 }
 
+/** Tuned so a full 5-Boss campaign (~2500m) can reach 司令 with normal play. */
 export const RANK_DEFS: readonly RankDefinition[] = [
-  { name: "新兵", xpToNext: 45, visualStage: 0, weapon: "rifle" },
-  { name: "列兵", xpToNext: 60, visualStage: 0 },
-  { name: "下士", xpToNext: 75, visualStage: 1, weapon: "smg" },
-  { name: "中士", xpToNext: 90, visualStage: 1 },
-  { name: "上士", xpToNext: 110, visualStage: 1, weapon: "shotgun" },
-  { name: "少尉", xpToNext: 130, visualStage: 2 },
-  { name: "中尉", xpToNext: 150, visualStage: 2, weapon: "sniper" },
-  { name: "上尉", xpToNext: 175, visualStage: 2 },
-  { name: "少校", xpToNext: 200, visualStage: 3 },
-  { name: "中校", xpToNext: 230, visualStage: 3, weapon: "rocket" },
-  { name: "上校", xpToNext: 265, visualStage: 3 },
-  { name: "将军", xpToNext: 305, visualStage: 4 },
-  { name: "司令", xpToNext: 400, visualStage: 4, weapon: "laser" },
+  { name: "新兵", xpToNext: 30, visualStage: 0, weapon: "rifle" },
+  { name: "列兵", xpToNext: 40, visualStage: 0 },
+  { name: "下士", xpToNext: 50, visualStage: 1, weapon: "smg" },
+  { name: "中士", xpToNext: 60, visualStage: 1 },
+  { name: "上士", xpToNext: 75, visualStage: 1, weapon: "shotgun" },
+  { name: "少尉", xpToNext: 90, visualStage: 2 },
+  { name: "中尉", xpToNext: 105, visualStage: 2, weapon: "sniper" },
+  { name: "上尉", xpToNext: 120, visualStage: 2 },
+  { name: "少校", xpToNext: 140, visualStage: 3 },
+  { name: "中校", xpToNext: 160, visualStage: 3, weapon: "rocket" },
+  { name: "上校", xpToNext: 185, visualStage: 3 },
+  { name: "将军", xpToNext: 210, visualStage: 4 },
+  { name: "司令", xpToNext: 280, visualStage: 4, weapon: "laser" },
 ] as const;
 
 export const MAX_RANK = RANK_DEFS.length;
-export const COMMANDER_MERIT = 400;
+export const COMMANDER_MERIT = 280;
 
 export function rankName(rank: number): string {
   return RANK_DEFS[Math.max(0, Math.min(MAX_RANK - 1, rank - 1))].name;

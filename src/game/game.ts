@@ -521,8 +521,8 @@ function animateWalk(soldier, t, speed = 10, amp = 0.55, lean = 0) {
     for (const m of ud.tintMats) m.emissive.setRGB(h, h, h);
   }
   if (ud.aura) {
-    ud.aura.rotation.z += .025;
-    ud.aura.material.opacity = .2 + Math.sin(t * 5 + ud.phase) * .08;
+    ud.aura.rotation.z += .02;
+    if (ud.aura.material) ud.aura.material.opacity = .18 + Math.sin(t * 4 + ud.phase) * .08;
   }
   if (ud.halo) {
     ud.halo.rotation.z += .045;
@@ -1433,12 +1433,23 @@ function shatterEnemy(e) {
   }
 }
 
-/* 击杀结算:得分 + 连杀链 */
+function killXpForEnemy(e) {
+  const base =
+    e.type === "fodder" ? 4 :
+    e.type === "gunner" ? 9 :
+    e.type === "shield" ? 11 :
+    e.type === "heavy" ? 16 :
+    6;
+  return e.elite ? Math.round(base * 1.8) : base;
+}
+
+/* 击杀结算:得分 + 经验 + 连杀链 */
 function killEnemy(e) {
   e.dead = true;
   kills++;
   score += e.score + (e.elite ? 40 : 0);
   const ep = e.mesh.position;
+  grantHeroXp(killXpForEnemy(e), ep.x, ep.z + .4);
   shatterEnemy(e);
   addImpactRing(ep.x, .08, ep.z, e.type === "shield" ? 0x8dd8ed : 0xff765f, e.type === "heavy" ? 2.6 : 1.5);
   addSparks(ep.x, 1.1, ep.z, e.type === "shield" ? 0x9fe2f2 : 0xffb27a, e.type === "heavy" ? 10 : 5, .34);
@@ -1719,8 +1730,8 @@ const GATE_BUFFS = [
     apply() { player.damageBonus = Math.min(.6, player.damageBonus + .08); } },
   { text: "射速 +10%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
     apply() { player.fireRateMul = Math.max(.65, player.fireRateMul * .9); } },
-  { text: "经验 +55",  color: 0x8bc34a, css: "#aed581", good: true,
-    apply() { grantHeroXp(55); } },
+  { text: "经验 +70",  color: 0x8bc34a, css: "#aed581", good: true,
+    apply() { grantHeroXp(70); } },
   { text: "护盾 +1",   color: 0x66e7ff, css: "#7df6ff", good: true,
     apply() { player.shield = Math.min(player.shield + 1, 9); } },
 ];
@@ -1979,7 +1990,7 @@ function applyReward(r, x, z) {
   flashScreen(r.color, .28);
   addFloatText(x, 3, z, r.label, r.color);
   switch (r.type) {
-    case "xp":       grantHeroXp(r.xp || 45, x, z); break;
+    case "xp":       grantHeroXp(r.xp || 55, x, z); break;
     case "heal": {
       const hero = heroUnit();
       if (hero) {
@@ -2096,82 +2107,172 @@ function clearHazardsForBoss() {
   eventHordeT = 0;
 }
 
+/**
+ * Boss silhouettes inspired by arcade mech bosses (Sky Force / 雷电 style):
+ * readable mass, glowing core, theme-unique hardpoints — not just a big soldier.
+ */
 function makeBossModel(def, bossNumber) {
-  const weaponIds = ["smg", "shotgun", "sniper", "rocket", "laser"];
-  const mesh = makeSoldier(def.color, weaponIds[(bossNumber - 1) % weaponIds.length], 5);
-  mesh.scale.setScalar(2.65);
+  const root = new THREE.Group();
+  const rig = new THREE.Group();
+  root.add(rig);
+
+  const bodyMat = new THREE.MeshToonMaterial({ color: def.color, gradientMap: TOON_RAMP });
   const armorMat = new THREE.MeshToonMaterial({
-    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .22,
+    color: def.accent, gradientMap: TOON_RAMP, emissive: def.accent, emissiveIntensity: .28,
   });
+  const darkMat = new THREE.MeshToonMaterial({
+    color: new THREE.Color(def.color).multiplyScalar(.45).getHex(), gradientMap: TOON_RAMP,
+  });
+  const metalMat = new THREE.MeshToonMaterial({ color: 0x3a4654, gradientMap: TOON_RAMP });
   const coreMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false });
-  const rig = mesh.userData.rig;
+  const glowMat = new THREE.MeshBasicMaterial({ color: def.accent, toneMapped: false, transparent: true, opacity: .9 });
+
+  const add = (geo, mat, x, y, z, sx = 1, sy = 1, sz = 1, parent = rig) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.scale.set(sx, sy, sz);
+    parent.add(m);
+    return m;
+  };
+
+  const shadow = new THREE.Mesh(soldierGeo.shadow, soldierShadowMat);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = .02;
+  shadow.scale.set(2.4, 1.4, 2.4);
+  root.add(shadow);
+
+  // Shared mech torso + legs (chunky arcade boss base)
+  add(new THREE.CapsuleGeometry(.55, .7, 8, 14), bodyMat, 0, 1.35, 0, 1.15, 1.05, 1.0);
+  add(new THREE.SphereGeometry(.48, 16, 12), armorMat, 0, 1.55, -.15, 1.1, .7, .9);
+  add(new THREE.CapsuleGeometry(.22, .55, 6, 10), darkMat, -.38, .55, .05, 1.1, 1.0, 1.1);
+  add(new THREE.CapsuleGeometry(.22, .55, 6, 10), darkMat, .38, .55, .05, 1.1, 1.0, 1.1);
+  add(new THREE.SphereGeometry(.32, 12, 10), metalMat, -.4, .12, -.08, 1.3, .7, 1.5);
+  add(new THREE.SphereGeometry(.32, 12, 10), metalMat, .4, .12, -.08, 1.3, .7, 1.5);
+  add(new THREE.SphereGeometry(.42, 14, 12), bodyMat, 0, 2.15, 0, 1.05, .95, 1.0);
+  // Visor eyes
+  add(new THREE.SphereGeometry(.1, 10, 8), glowMat, -.14, 2.2, -.38, 1.2, .9, .6);
+  add(new THREE.SphereGeometry(.1, 10, 8), glowMat, .14, 2.2, -.38, 1.2, .9, .6);
+  const core = add(new THREE.IcosahedronGeometry(.22, 1), coreMat, 0, 1.45, -.55, 1, 1, 1);
+  core.userData.isBossCore = true;
+
   for (const side of [-1, 1]) {
-    const shoulder = new THREE.Mesh(soldierGeo.hand, armorMat);
-    shoulder.scale.set(2.2, 1.8, 2.0);
-    shoulder.position.set(side * .62, 1.32, 0);
-    rig.add(shoulder);
+    add(new THREE.SphereGeometry(.28, 12, 10), armorMat, side * .72, 1.75, 0, 1.15, .95, 1.1);
   }
-  const core = new THREE.Mesh(soldierGeo.hand, coreMat);
-  core.scale.set(1.1, 1.1, 1.1);
-  core.position.set(0, 1.08, -.42);
-  rig.add(core);
+
   if (def.theme === "tank") {
+    // Twin barrels + blocky turret — heavy silhouette
+    const turret = add(new THREE.BoxGeometry(1.5, .45, 1.1), armorMat, 0, 2.05, .1, 1, 1, 1);
+    turret.rotation.y = 0;
     for (const side of [-1, 1]) {
-      const cannon = new THREE.Mesh(soldierGeo.gunBody, armorMat);
-      cannon.scale.set(1.4, 1.4, 1.8);
+      const cannon = add(new THREE.CylinderGeometry(.14, .2, 1.9, 12), metalMat, side * .42, 2.05, -.95, 1, 1, 1);
       cannon.rotation.x = Math.PI / 2;
-      cannon.position.set(side * .58, 1.48, -.7);
-      rig.add(cannon);
+      add(new THREE.SphereGeometry(.18, 10, 8), glowMat, side * .42, 2.05, -1.85, 1, 1, 1);
     }
-    const turret = new THREE.Mesh(soldierGeo.torso, armorMat);
-    turret.scale.set(1.4, .55, 1.1);
-    turret.position.set(0, 1.68, .05);
-    rig.add(turret);
-  } else if (def.theme === "shield") {
-    const shield = new THREE.Mesh(soldierGeo.torso, armorMat);
-    shield.scale.set(1.9, 1.9, .35);
-    shield.position.set(0, 1.08, -.72);
-    rig.add(shield);
-    const shieldCore = new THREE.Mesh(new THREE.RingGeometry(.28, .52, 22), coreMat);
-    shieldCore.position.set(0, 1.08, -.9);
-    rig.add(shieldCore);
-  } else if (def.theme === "sniper") {
-    const barrel = new THREE.Mesh(soldierGeo.gunBody, armorMat);
-    barrel.scale.set(1.0, 1.0, 2.6);
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(.28, 1.28, -1.05);
-    rig.add(barrel);
-    const scope = new THREE.Mesh(soldierGeo.hand, coreMat);
-    scope.scale.set(1.2, 1.2, 1.2);
-    scope.position.set(.28, 1.55, -.4);
-    rig.add(scope);
-  } else if (def.theme === "rocket") {
+    add(new THREE.BoxGeometry(1.8, .25, 1.4), darkMat, 0, .95, .15, 1, 1, 1);
+    // Tread blocks
     for (const side of [-1, 1]) {
-      const pod = new THREE.Mesh(soldierGeo.torso, armorMat);
-      pod.scale.set(.85, 1.0, 1.15);
-      pod.position.set(side * .72, 1.42, .15);
-      rig.add(pod);
+      add(new THREE.BoxGeometry(.45, .55, 1.6), metalMat, side * .85, .35, .1, 1, 1, 1);
+    }
+  } else if (def.theme === "shield") {
+    // Giant frontal disc shield + hammer arms
+    const shield = add(new THREE.CylinderGeometry(1.15, 1.15, .22, 24), armorMat, 0, 1.4, -.95, 1, 1, 1);
+    shield.rotation.x = Math.PI / 2;
+    add(new THREE.RingGeometry(.35, .7, 28), glowMat, 0, 1.4, -1.08, 1, 1, 1);
+    for (const side of [-1, 1]) {
+      add(new THREE.CapsuleGeometry(.18, .7, 6, 10), bodyMat, side * .95, 1.2, -.1, 1, 1, 1);
+      add(new THREE.SphereGeometry(.32, 12, 10), metalMat, side * 1.15, .75, -.25, 1.2, 1, 1.2);
+    }
+    add(new THREE.BoxGeometry(1.2, .9, .35), darkMat, 0, 1.35, .45, 1, 1, 1);
+  } else if (def.theme === "sniper") {
+    // Tall lean frame + oversized rail cannon and optic
+    add(new THREE.CapsuleGeometry(.18, 1.1, 6, 10), bodyMat, 0, 1.7, 0, .85, 1.2, .85);
+    const barrel = add(new THREE.CylinderGeometry(.1, .16, 3.2, 12), metalMat, .55, 1.7, -1.2, 1, 1, 1);
+    barrel.rotation.x = Math.PI / 2;
+    add(new THREE.SphereGeometry(.28, 12, 10), glowMat, .55, 1.95, -.35, 1.2, 1.2, 1.2);
+    add(new THREE.TorusGeometry(.22, .05, 8, 18), coreMat, .55, 1.95, -.35, 1, 1, 1);
+    add(new THREE.BoxGeometry(.5, .35, .9), armorMat, -.55, 1.55, .1, 1, 1, 1);
+    // Antenna / targeting fins
+    for (const side of [-1, 1]) {
+      const fin = add(new THREE.BoxGeometry(.08, .7, .35), armorMat, side * .55, 2.45, .1, 1, 1, 1);
+      fin.rotation.z = side * .25;
+    }
+  } else if (def.theme === "rocket") {
+    // Wide missile pods / bomber silhouette
+    for (const side of [-1, 1]) {
+      const pod = add(new THREE.CapsuleGeometry(.35, .9, 8, 12), armorMat, side * .95, 1.55, .15, 1, 1, 1.15);
+      pod.rotation.z = side * .12;
       for (let row = 0; row < 2; row++) for (let col = 0; col < 2; col++) {
-        const tube = new THREE.Mesh(soldierGeo.gunTip, coreMat);
-        tube.scale.set(1.1, 1.1, 1.2);
+        const tube = add(new THREE.CylinderGeometry(.09, .09, .55, 10), coreMat,
+          side * .95 + (col - .5) * .28, 1.35 + row * .28, -.55, 1, 1, 1);
         tube.rotation.x = Math.PI / 2;
-        tube.position.set(side * .72 + (col - .5) * .2, 1.28 + row * .22, -.38);
-        rig.add(tube);
       }
     }
-  } else if (def.theme === "energy") {
-    for (let i = 0; i < 3; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(.68 + i * .16, .04, 8, 28), coreMat);
-      ring.position.set(0, 1.22, .15);
-      ring.rotation.set(Math.PI / 2, i * .7, i * .4);
-      rig.add(ring);
-      mesh.userData.energyRings ||= [];
-      mesh.userData.energyRings.push(ring);
+    add(new THREE.BoxGeometry(1.4, .35, .8), darkMat, 0, 1.9, .25, 1, 1, 1);
+    // Back exhausts
+    for (const side of [-1, 1]) {
+      add(new THREE.ConeGeometry(.22, .55, 10), glowMat, side * .35, 1.2, .75, 1, 1, 1).rotation.x = -Math.PI / 2;
     }
+  } else {
+    // Energy guardian: floating rings + crystal core crown
+    for (let i = 0; i < 3; i++) {
+      const ring = add(new THREE.TorusGeometry(.75 + i * .22, .05, 8, 36), glowMat, 0, 1.5, .1, 1, 1, 1);
+      ring.rotation.set(Math.PI / 2 + i * .15, i * .5, i * .3);
+      root.userData.energyRings ||= [];
+      root.userData.energyRings.push(ring);
+    }
+    add(new THREE.OctahedronGeometry(.35, 0), coreMat, 0, 2.55, 0, 1, 1.2, 1);
+    for (const side of [-1, 1]) {
+      const wing = add(new THREE.BoxGeometry(.15, 1.1, .55), armorMat, side * .85, 1.7, .2, 1, 1, 1);
+      wing.rotation.z = side * .4;
+    }
+    add(new THREE.TorusGeometry(.5, .06, 8, 24), glowMat, 0, 1.45, -.5, 1, 1, 1);
   }
-  mesh.userData.bossCore = core;
-  applyRimFresnel(mesh, def.accent, 2.1, 1.0);
-  return mesh;
+
+  // Floating aura disc
+  const aura = new THREE.Mesh(
+    new THREE.RingGeometry(.9, 1.25, 36),
+    new THREE.MeshBasicMaterial({
+      color: def.accent, transparent: true, opacity: .28, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }),
+  );
+  aura.rotation.x = -Math.PI / 2;
+  aura.position.y = .04;
+  root.add(aura);
+  root.userData.aura = aura;
+
+  // Dummy joints so animateWalk bob/sway works without breaking the silhouette
+  const legL = new THREE.Group(), legR = new THREE.Group();
+  const armL = new THREE.Group(), armR = new THREE.Group();
+  const gunRig = new THREE.Group();
+  legL.position.set(-.35, .55, 0); legR.position.set(.35, .55, 0);
+  armL.position.set(-.7, 1.7, 0); armR.position.set(.7, 1.7, 0);
+  gunRig.position.set(0, 1.4, -.5);
+  rig.add(legL, legR, armL, armR, gunRig);
+  root.userData.rig = rig;
+  root.userData.legs = [legL, legR];
+  root.userData.arms = [armL, armR];
+  root.userData.gunRig = gunRig;
+  root.userData.head = rig;
+  root.userData.face = null;
+  root.userData.armBase = .2;
+  root.userData.phase = Math.random() * Math.PI * 2;
+  root.userData.recoil = 0;
+  root.userData.hit = 0;
+  root.userData.spawnT = 1;
+  root.userData.mergeT = 0;
+  root.userData.bossCore = core;
+  root.userData.weaponId = "rifle";
+  root.userData.tier = 5;
+  root.userData.visualStage = 5;
+  const tintSet = new Set();
+  root.traverse(o => {
+    if (o.isMesh && o.material && o.material.isMeshToonMaterial) tintSet.add(o.material);
+  });
+  root.userData.tintMats = [...tintSet];
+  root.scale.setScalar(1.85);
+  applyRimFresnel(root, def.accent, 2.0, 1.05);
+  return root;
 }
 
 function estimateBossDps() {
@@ -2297,14 +2398,19 @@ function defeatBoss() {
     hero.armor = Math.min(hero.maxArmor, hero.armor + healed);
     addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
   }
+  // Boss XP is the main rank pace-setter: early ranks before boss 2, commander by boss 5 with normal play.
+  const bossXp = 140 + defeated.number * 55;
   if (unlock) {
     const def = WEAPON_DEFS[unlock];
-    grantHeroXp(110, player.x, PLAYER_Z - 5);
+    grantHeroXp(bossXp + 40, player.x, PLAYER_Z - 5);
     addFloatText(player.x, 5.2, PLAYER_Z - 5, `${def.label} 能量核心!`, def.css, 6.2);
     flashScreen(def.css, .4);
   } else {
-    grantHeroXp(80, player.x, PLAYER_Z - 5);
+    grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
     addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破!", "#ffe27a", 6.2);
+  }
+  if (player.level < MAX_RANK) {
+    addFloatText(player.x, 4.2, PLAYER_Z - 3, `军衔 ${rankName(player.level)} ${player.level}/${MAX_RANK}`, "#b8f58b", 4.6);
   }
   addImpactRing(0, .08, -22, defeated.def.accent, 8);
   addShake(.45);
