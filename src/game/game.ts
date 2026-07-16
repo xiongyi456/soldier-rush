@@ -32,9 +32,9 @@ const PLAYER_Z = 0;
 const MAX_SQUAD = 1;
 const MAX_TIER = MAX_RANK;
 
-/** 单枪体系：全程步枪，射速主要靠穿门叠加 */
+/** 单枪体系：机关枪。成长只叠攻速 / 攻击（门、箱子、Boss）。 */
 const WEAPON_DEFS = {
-  rifle: { label: "步枪", color: 0x5aa9ff, css: "#74b9ff", damage: 2, fireRate: 22, speed: 1.32, type: "bullet", unlockBoss: 0 },
+  rifle: { label: "机关枪", color: 0x63e6be, css: "#63e6be", damage: 2, fireRate: 10, speed: 1.42, type: "bullet", unlockBoss: 0 },
 };
 const WEAPON_ORDER = Object.keys(WEAPON_DEFS);
 const BOSS_DEFS = [
@@ -607,22 +607,24 @@ function applyRimFresnel(mesh, rimColor = 0x8fd6ff, power = 2.4, strength = .85)
 }
 
 /* ================= 道具箱 ================= */
-const REWARDS = [
-  { type: "xp",       label: "经验核心", color: "#8bc34a", weight: 24, xp: 28 },
-  { type: "heal",     label: "医疗核心", color: "#ff6685", weight: 10, heal: 20 },
-  { type: "firerate", label: "射速+",  color: "#4fc3f7", weight: 14 },
-  { type: "damage",   label: "火力+",  color: "#ff8a65", weight: 14 },
-  { type: "spread",   label: "散弹",   color: "#ba68c8", weight: 12 },
-  { type: "shield",   label: "护盾",   color: "#4dd0e1", weight: 12 },
-  { type: "bomb",     label: "炸弹",   color: "#ef5350", weight: 8  },
-  { type: "slow",     label: "减缓",   color: "#fff176", weight: 8  },
-  { type: "coin",     label: "金币",   color: "#ffd54f", weight: 8 },
+/** 第一关 Boss 前：只掉攻速/攻击。之后可夹少量治疗等，仍以枪成长为主。 */
+const REWARDS_EARLY = [
+  { type: "firerate", label: "攻速+", color: "#4fc3f7", weight: 55 },
+  { type: "damage",   label: "攻击+", color: "#ff8a65", weight: 45 },
+];
+const REWARDS_LATE = [
+  { type: "firerate", label: "攻速+", color: "#4fc3f7", weight: 36 },
+  { type: "damage",   label: "攻击+", color: "#ff8a65", weight: 34 },
+  { type: "heal",     label: "医疗", color: "#ff6685", weight: 14, heal: 22 },
+  { type: "shield",   label: "护盾", color: "#4dd0e1", weight: 10 },
+  { type: "xp",       label: "经验", color: "#8bc34a", weight: 6, xp: 28 },
 ];
 function pickReward() {
-  const total = REWARDS.reduce((s, r) => s + r.weight, 0);
+  const pool = bossCount < 1 ? REWARDS_EARLY : REWARDS_LATE;
+  const total = pool.reduce((s, r) => s + r.weight, 0);
   let n = Math.random() * total;
-  let reward = REWARDS[0];
-  for (const r of REWARDS) { n -= r.weight; if (n <= 0) { reward = r; break; } }
+  let reward = pool[0];
+  for (const r of pool) { n -= r.weight; if (n <= 0) { reward = r; break; } }
   return { ...reward };
 }
 
@@ -1787,30 +1789,27 @@ function spawnHordeWave() {
   addFloatText(0, 5, -12, "18秒敌潮!", "#ff8a65", 5.8);
 }
 
-/* ================= 选择门(Left / Right Gate) ================= */
-/* 每对门固定：一边增益 + 一边减益，左右随机，穿门前看清颜色与文字 */
-/* 穿门是射速成长主路径：好门多给射速，火力/护盾/经验为辅 */
+/* ================= 选择门 ================= */
+/* 一边增益 + 一边减益；增益/减益只动机关枪的攻速或攻击 */
 const GATE_BUFFS = [
-  { text: "射速 +18%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
-    apply() { player.fireRateMul = Math.max(.48, player.fireRateMul * .82); } },
-  { text: "射速 +12%", color: 0x29b6f6, css: "#81d4fa", good: true,
-    apply() { player.fireRateMul = Math.max(.48, player.fireRateMul * .88); } },
-  { text: "火力 +6%",   color: 0xff7043, css: "#ff9a76", good: true,
-    apply() { player.damageBonus = Math.min(.5, player.damageBonus + .06); } },
-  { text: "经验 +30",  color: 0x8bc34a, css: "#aed581", good: true,
-    apply() { grantHeroXp(30); } },
-  { text: "护盾 +1",   color: 0x66e7ff, css: "#7df6ff", good: true,
-    apply() { player.shield = Math.min(player.shield + 1, 9); } },
+  { text: "攻速 +20%", color: 0x4fc3f7, css: "#8fd9ff", good: true,
+    apply() { player.fireRateMul = Math.max(.42, player.fireRateMul * .80); } },
+  { text: "攻速 +14%", color: 0x29b6f6, css: "#81d4fa", good: true,
+    apply() { player.fireRateMul = Math.max(.42, player.fireRateMul * .86); } },
+  { text: "攻击 +10%", color: 0xff7043, css: "#ff9a76", good: true,
+    apply() { player.damageBonus = Math.min(.8, player.damageBonus + .10); } },
+  { text: "攻击 +6%",  color: 0xff8a65, css: "#ffab91", good: true,
+    apply() { player.damageBonus = Math.min(.8, player.damageBonus + .06); } },
 ];
 const GATE_DEBUFFS = [
-  { text: "射速 -12%", color: 0x5d4037, css: "#bcaaa4", good: false,
-    apply() { player.fireRateMul = Math.min(1.45, player.fireRateMul / .88); } },
-  { text: "火力 -6%",   color: 0xb71c1c, css: "#ef5350", good: false,
-    apply() { player.damageBonus = Math.max(0, player.damageBonus - .06); } },
-  { text: "护甲 -2",   color: 0x7b1fa2, css: "#ce93d8", good: false,
-    apply() { const hero = heroUnit(); if (hero) damageUnit(hero, 2); player.hurtT = 18; } },
-  { text: "减速 2秒",  color: 0x455a64, css: "#90a4ae", good: false,
-    apply() { player.moveSlowT = Math.max(player.moveSlowT, 120); } },
+  { text: "攻速 -14%", color: 0x5d4037, css: "#bcaaa4", good: false,
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .86); } },
+  { text: "攻速 -10%", color: 0x6d4c41, css: "#a1887f", good: false,
+    apply() { player.fireRateMul = Math.min(1.55, player.fireRateMul / .90); } },
+  { text: "攻击 -8%",  color: 0xb71c1c, css: "#ef5350", good: false,
+    apply() { player.damageBonus = Math.max(0, player.damageBonus - .08); } },
+  { text: "攻击 -5%",  color: 0xc62828, css: "#e57373", good: false,
+    apply() { player.damageBonus = Math.max(0, player.damageBonus - .05); } },
 ];
 function spawnGatePair() {
   const group = new THREE.Group();
@@ -2073,24 +2072,17 @@ function applyReward(r, x, z) {
       }
       break;
     }
-    case "firerate": player.fireRateMul = Math.max(.48, player.fireRateMul * .82); break;
-    case "damage":   player.damageBonus = Math.min(.6, player.damageBonus + .08); break;
-    case "spread":   player.spreadT = 600; break;                        // 10 秒散弹
-    case "shield":   player.shield = Math.min(player.shield + 3, 9); break;
-    case "slow":     player.slowT = 420; break;                          // 7 秒减缓
-    case "coin":     score += 150; break;
-    case "bomb": {
-      addImpactRing(x, .1, z, 0xff9800, 5.5);
-      addSparks(x, 1.2, z, 0xffb74d, mobileDevice ? 8 : 14, .4);
-      addShake(0.4);
-      for (const e of enemies) {
-        e.dead = true;
-        kills++; score += e.score;
-        // No per-enemy shatter burst — one ring already sells the bomb.
-      }
-      addFloatText(player.x, 4, -6, "全屏轰炸!", "#ff9800");
+    case "firerate":
+      player.fireRateMul = Math.max(.42, player.fireRateMul * .80);
+      addFloatText(x, 3.6, z, "攻速提升!", "#4fc3f7", 4.2);
       break;
-    }
+    case "damage":
+      player.damageBonus = Math.min(.8, player.damageBonus + .10);
+      addFloatText(x, 3.6, z, "攻击提升!", "#ff8a65", 4.2);
+      break;
+    case "shield":   player.shield = Math.min(player.shield + 2, 9); break;
+    case "slow":     player.slowT = 420; break;
+    case "coin":     score += 150; break;
   }
   score += 30;
 }
@@ -2525,10 +2517,12 @@ function defeatBoss() {
     addFloatText(player.x, 4, PLAYER_Z - 2, `战地维修 +${healed}`, "#7ff0b0", 4.4);
   }
   // Boss reward: permanent-for-run fire-rate kick (single-rifle power curve).
-  player.fireRateMul = Math.max(.48, player.fireRateMul * .9);
+  // Boss 奖励：二选一式强化，攻速 + 攻击各给一点
+  player.fireRateMul = Math.max(.42, player.fireRateMul * .88);
+  player.damageBonus = Math.min(.8, player.damageBonus + .06);
   const bossXp = 40 + defeated.number * 15;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
-  addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 射速提升!", "#8fd9ff", 6.2);
+  addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
   flashScreen("#8fd9ff", .35);
   if (player.level < MAX_RANK) {
     addFloatText(player.x, 4.2, PLAYER_Z - 3, `军衔 ${rankName(player.level)} ${player.level}/${MAX_RANK}`, "#b8f58b", 4.6);
@@ -3909,7 +3903,7 @@ const controlText = document.getElementById("controlText");
 
 function renderProgressText() {
   if (!progressText) return;
-  progressText.textContent = `步枪体系　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
+  progressText.textContent = `机关枪体系　司令勋章：${saveData.medals}　最高Boss：${saveData.highestBoss}　最远：${saveData.bestDistance}m`;
 }
 renderProgressText();
 

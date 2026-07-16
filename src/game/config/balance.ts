@@ -1,6 +1,6 @@
-/** Per-stage total firepower budget (single rifle). Gate fire-rate is the main DPS lever. */
-export const WEAPON_STAGE_POWER = [2.4, 2.9, 3.5, 4.2, 5.0, 6.0] as const;
-export const MIN_FIRE_INTERVAL = 6;
+/** Single MG power stages. Early damage is high enough to clear fodder. */
+export const WEAPON_STAGE_POWER = [3.2, 3.8, 4.5, 5.3, 6.2, 7.2] as const;
+export const MIN_FIRE_INTERVAL = 5;
 export const BOSS_TARGET_SECONDS = 12;
 
 export const DAMAGE_VALUES = {
@@ -56,13 +56,13 @@ export interface RewardCore<TReward = unknown> {
   magnetRadius: number;
 }
 
-/** Hits needed if a single projectile lands. Tuned so early rifle can clear fodder. */
+/** Hits needed per archetype. Starter MG should delete fodder in ~1 shot. */
 const ENEMY_HIT_RANGES: Record<EnemyArchetype, readonly [number, number]> = {
-  fodder: [1.2, 1.9],
-  normal: [2.0, 3.2],
-  gunner: [4.0, 6.0],
-  shield: [5.0, 7.5],
-  heavy: [8.0, 12.0],
+  fodder: [0.85, 1.25],
+  normal: [1.5, 2.4],
+  gunner: [3.2, 4.8],
+  shield: [4.0, 6.0],
+  heavy: [6.5, 9.5],
 };
 
 export function heroMaxHealth(rank: number): number {

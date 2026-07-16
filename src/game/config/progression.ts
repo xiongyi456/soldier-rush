@@ -10,7 +10,7 @@ export interface RankDefinition {
  * Target pace (normal play, 5-Boss campaign):
  * Boss1 ≈ 列兵–下士 · Boss2 ≈ 上士 · Boss3 ≈ 中尉 · Boss4 ≈ 中校 · Boss5 ≈ 将军–司令
  * Total ladder XP (新兵→司令) ≈ 1835; kill XP is small so ranks drip, not explode.
- * Single weapon: always 步枪. Power stage rises with rank; fire rate mainly from gates.
+ * Single weapon: always 机关枪. Power stage rises with rank; AS/ATK mainly from gates & crates.
  */
 export const RANK_DEFS: readonly RankDefinition[] = [
   { name: "新兵", xpToNext: 50, visualStage: 0 },
@@ -39,7 +39,7 @@ export function rankXpToNext(rank: number): number {
   return RANK_DEFS[Math.max(0, Math.min(MAX_RANK - 1, rank - 1))].xpToNext;
 }
 
-/** Always the one rifle — no multi-weapon evolution. */
+/** Always the one machine gun — no multi-weapon evolution. */
 export function weaponForRank(_rank: number): WeaponId {
   return "rifle";
 }

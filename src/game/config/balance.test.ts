@@ -62,27 +62,26 @@ describe("combat pacing", () => {
     expect(values[5] / values[0]).toBeGreaterThan(1.5);
   });
 
-  it("respects rifle cadence and the safety floor", () => {
-    expect(fireInterval(22)).toBe(22);
-    expect(fireInterval(22, .5, 0)).toBe(11);
-    expect(fireInterval(6, .5, 5)).toBe(6);
+  it("respects machine-gun cadence and the safety floor", () => {
+    expect(fireInterval(10)).toBe(10);
+    expect(fireInterval(10, .5, 0)).toBe(5);
+    expect(fireInterval(5, .5, 5)).toBe(5);
   });
 
   it("uses archetype hit-count bands", () => {
     const damage = 2;
-    expect(enemyHealth("fodder", damage, 1)).toBe(4);
-    expect(enemyHealth("gunner", damage, .5)).toBe(10);
-    expect(enemyHealth("heavy", damage, .5)).toBe(20);
+    expect(enemyHealth("fodder", damage, 1)).toBe(3);
+    expect(enemyHealth("gunner", damage, .5)).toBe(8);
+    expect(enemyHealth("heavy", damage, .5)).toBe(16);
   });
 
-  it("keeps early fodder clearable with a single rifle", () => {
+  it("keeps early fodder clearable with starter MG", () => {
     const damage = projectileDamage(1, 1);
     const fodder = enemyHealth("fodder", damage, .5, 1);
-    // About 1–2 hits with starter rifle.
-    expect(fodder / damage).toBeGreaterThanOrEqual(1.1);
-    expect(fodder / damage).toBeLessThanOrEqual(2.2);
-    expect(enemyHealth("normal", damage, .5, 1) / damage).toBeGreaterThanOrEqual(2);
-    expect(enemyHealth("heavy", damage, .5, 1) / damage).toBeGreaterThanOrEqual(8);
+    // About 1 hit with starter machine gun.
+    expect(fodder / damage).toBeLessThanOrEqual(1.35);
+    expect(enemyHealth("normal", damage, .5, 1) / damage).toBeGreaterThanOrEqual(1.4);
+    expect(enemyHealth("normal", damage, .5, 1) / damage).toBeLessThanOrEqual(2.6);
   });
 
   it("targets an eleven to sixteen second boss window", () => {
@@ -92,9 +91,9 @@ describe("combat pacing", () => {
     expect(hp / dps).toBeLessThanOrEqual(16);
   });
 
-  it("keeps the boss window bounded across rifle stages", () => {
+  it("keeps the boss window bounded across MG stages", () => {
     for (let stage = 1; stage <= 6; stage += 1) {
-      const dps = projectileDamage(stage, 1) * 60 / fireInterval(22);
+      const dps = projectileDamage(stage, 1) * 60 / fireInterval(10);
       const duration = bossHealth(stage, dps) / dps;
       expect(duration).toBeGreaterThanOrEqual(11);
       expect(duration).toBeLessThanOrEqual(16.2);
