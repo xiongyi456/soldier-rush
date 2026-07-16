@@ -44,6 +44,17 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         navigateFallback: null,
+        // 避免 HTML/入口被旧 SW 死缓存导致一直「请稍候」
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "pages",
+              networkTimeoutSeconds: 4,
+            },
+          },
+        ],
       },
     }),
   ],

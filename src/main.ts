@@ -81,34 +81,45 @@ function showFatal(detail: string): void {
   bindClearCacheButton();
 }
 
+function wireStartClick(): void {
+  const button = $("startBtn") as HTMLButtonElement | null;
+  if (!button) return;
+  button.onclick = null;
+  const onStart = () => {
+    if (typeof g.__soldierRushStart === "function") {
+      g.__soldierRushStart();
+      return;
+    }
+    setStatus("引擎还在加载，请稍等 2 秒再点，或清缓存");
+    setButton("清除缓存并刷新", true);
+    bindClearCacheButton();
+  };
+  // 覆盖可能残留的旧监听
+  button.replaceWith(button.cloneNode(true));
+  const fresh = $("startBtn") as HTMLButtonElement | null;
+  if (!fresh) return;
+  fresh.disabled = false;
+  fresh.textContent = "开始游戏";
+  fresh.addEventListener("click", onStart);
+}
+
 function markReadyAndEnableStart(): void {
   g.__soldierRushReady = true;
   hideLoadingOverlay();
   setStatus("");
-  setButton("开始游戏", true);
-  const button = $("startBtn") as HTMLButtonElement | null;
-  if (!button) return;
-  button.onclick = null;
-  button.addEventListener("click", () => {
-    if (typeof g.__soldierRushStart === "function") {
-      g.__soldierRushStart();
-    } else {
-      setStatus("引擎未就绪，请点下方清除缓存");
-      setButton("清除缓存并刷新", true);
-      bindClearCacheButton();
-    }
-  });
+  wireStartClick();
 }
 
-// Optional PWA — no auto reload loops.
+// PWA：有更新时只提示，不要自动 hardReload（会刷新死循环卡在请稍候）
 try {
   void import("virtual:pwa-register")
     .then(({ registerSW }) => {
       registerSW({
         immediate: true,
         onNeedRefresh() {
-          // 有新版本时清缓存并硬刷新，避免卡在旧包
-          hardReload();
+          setStatus("发现新版本 · 点「清除缓存并刷新」");
+          setButton("清除缓存并刷新", true);
+          bindClearCacheButton();
         },
       });
     })
@@ -142,13 +153,6 @@ async function bootstrapNativeShell(): Promise<void> {
 
 void bootstrapNativeShell();
 
-/**
- * Classic flow:
- * 1) Full-screen "正在集结部队…"
- * 2) Load 3D game in background
- * 3) Hide overlay, enable "开始游戏"
- * 4) Click starts the run
- */
 function boot(): void {
   if (location.protocol === "file:") {
     showFatal("请用 npm run dev 打开，不要双击 html 文件。");
@@ -172,46 +176,51 @@ function boot(): void {
     showFatal(detail);
   };
 
-  const slowTip = window.setTimeout(() => {
-    if (!settled) setStatus("手机首次加载较慢，请继续等待…（也可稍后点清除缓存）");
-  }, 4000);
-
-  // 12s 仍未好：开放「清除缓存」但不阻断继续等
-  const softFail = window.setTimeout(() => {
-    if (settled) return;
-    setStatus("加载偏慢。可继续等，或点按钮清缓存重进。");
-    setButton("清除缓存并刷新", true);
-    bindClearCacheButton();
-  }, 12000);
-
-  const hardFail = window.setTimeout(() => {
-    if (!settled) finishFail("加载超时。请点「清除缓存并刷新」，或换网络后重试。");
-  }, 60000);
-
-  // 若页面已有旧缓存把 ready 标了却没 start，允许重试
-  if (g.__soldierRushReady && typeof g.__soldierRushStart === "function") {
-    window.clearTimeout(slowTip);
-    window.clearTimeout(softFail);
-    window.clearTimeout(hardFail);
+  // 已就绪：直接放行
+  if (typeof g.__soldierRushStart === "function") {
     finishOk();
     return;
   }
 
+  const slowTip = window.setTimeout(() => {
+    if (!settled) setStatus("手机首次加载较慢，请继续等待…");
+  }, 3500);
+
+  // 8 秒：若引擎已挂上则放行；否则给清缓存
+  const softOk = window.setTimeout(() => {
+    if (settled) return;
+    if (typeof g.__soldierRushStart === "function") {
+      finishOk();
+      return;
+    }
+    setStatus("加载偏慢。可继续等，或清缓存重进。");
+    setButton("清除缓存并刷新", true);
+    bindClearCacheButton();
+  }, 8000);
+
+  const hardFail = window.setTimeout(() => {
+    if (settled) return;
+    if (typeof g.__soldierRushStart === "function") {
+      finishOk();
+      return;
+    }
+    finishFail("加载超时。请点「清除缓存并刷新」。");
+  }, 25000);
+
   void import("./game/game.ts")
     .then(() => {
       window.clearTimeout(slowTip);
-      window.clearTimeout(softFail);
+      window.clearTimeout(softOk);
       window.clearTimeout(hardFail);
-      // game.ts 末尾会设 ready/start；这里再兜底一次
-      if (typeof g.__soldierRushStart !== "function") {
-        finishFail("游戏引擎未注册开始入口，请清除缓存后重试。");
-        return;
-      }
-      finishOk();
+      // 给模块末尾再一帧挂上 start
+      requestAnimationFrame(() => {
+        if (typeof g.__soldierRushStart === "function") finishOk();
+        else finishFail("游戏引擎未注册开始入口，请清除缓存后重试。");
+      });
     })
     .catch((error: unknown) => {
       window.clearTimeout(slowTip);
-      window.clearTimeout(softFail);
+      window.clearTimeout(softOk);
       window.clearTimeout(hardFail);
       console.error("Soldier Rush failed to boot", error);
       const detail = error instanceof Error ? error.message : String(error);
