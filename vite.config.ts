@@ -25,7 +25,7 @@ export default defineConfig({
   },
   plugins: [
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       includeAssets: ["icon.svg"],
       manifest: {
         name: "士兵冲锋 3D：豆丁的司令之路",

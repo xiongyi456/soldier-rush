@@ -30,8 +30,12 @@ function $(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
+function startButton(): HTMLButtonElement | null {
+  return $("startBtn") as HTMLButtonElement | null;
+}
+
 function setButton(text: string, enabled: boolean): void {
-  const button = $("startBtn") as HTMLButtonElement | null;
+  const button = startButton();
   if (!button) return;
   button.disabled = !enabled;
   button.textContent = text;
@@ -58,15 +62,11 @@ function hideLoadingOverlay(): void {
 function hardReload(): void {
   void clearSiteCaches().finally(() => {
     const url = new URL(location.href);
+    // 去掉旧 query 再加新 v，避免无限叠加
+    url.search = "";
     url.searchParams.set("v", String(Date.now()));
     location.replace(url.toString());
   });
-}
-
-function bindClearCacheButton(): void {
-  const button = $("startBtn") as HTMLButtonElement | null;
-  if (!button) return;
-  button.onclick = () => hardReload();
 }
 
 function showFatal(detail: string): void {
@@ -78,50 +78,46 @@ function showFatal(detail: string): void {
   );
   setStatus(detail);
   setButton("清除缓存并刷新", true);
-  bindClearCacheButton();
+  const button = startButton();
+  if (button) button.onclick = () => hardReload();
 }
 
-function wireStartClick(): void {
-  const button = $("startBtn") as HTMLButtonElement | null;
-  if (!button) return;
-  button.onclick = null;
-  const onStart = () => {
-    if (typeof g.__soldierRushStart === "function") {
-      g.__soldierRushStart();
-      return;
-    }
-    setStatus("引擎还在加载，请稍等 2 秒再点，或清缓存");
-    setButton("清除缓存并刷新", true);
-    bindClearCacheButton();
-  };
-  // 覆盖可能残留的旧监听
-  button.replaceWith(button.cloneNode(true));
-  const fresh = $("startBtn") as HTMLButtonElement | null;
-  if (!fresh) return;
-  fresh.disabled = false;
-  fresh.textContent = "开始游戏";
-  fresh.addEventListener("click", onStart);
+function tryStartGame(): void {
+  if (typeof g.__soldierRushStart === "function") {
+    hideLoadingOverlay();
+    g.__soldierRushStart();
+    return;
+  }
+  setStatus("还在加载中…若超过 10 秒请清缓存");
+  setButton("清除缓存并刷新", true);
+  const button = startButton();
+  if (button) button.onclick = () => hardReload();
 }
 
-function markReadyAndEnableStart(): void {
+function enableStartGame(): void {
   g.__soldierRushReady = true;
   hideLoadingOverlay();
   setStatus("");
-  wireStartClick();
+  const button = startButton();
+  if (!button) return;
+  button.disabled = false;
+  button.textContent = "开始游戏";
+  button.onclick = () => tryStartGame();
 }
 
-// PWA：有更新时只提示，不要自动 hardReload（会刷新死循环卡在请稍候）
+function enableClearCache(label = "清除缓存并刷新"): void {
+  const button = startButton();
+  if (!button) return;
+  button.disabled = false;
+  button.textContent = label;
+  button.onclick = () => hardReload();
+}
+
+// PWA 只注册，绝不自动刷新（自动刷新会死循环卡在请稍候）
 try {
   void import("virtual:pwa-register")
     .then(({ registerSW }) => {
-      registerSW({
-        immediate: true,
-        onNeedRefresh() {
-          setStatus("发现新版本 · 点「清除缓存并刷新」");
-          setButton("清除缓存并刷新", true);
-          bindClearCacheButton();
-        },
-      });
+      registerSW({ immediate: false });
     })
     .catch(() => {});
 } catch {
@@ -162,69 +158,55 @@ function boot(): void {
   showLoadingOverlay();
   setLoadingCard('正在集结部队…<div class="loading-track"><div id="loadingFill"></div></div>');
   setButton("请稍候…", false);
-  setStatus("正在加载 3D 资源，请稍候");
+  setStatus("正在加载 3D 资源…");
 
-  let settled = false;
-  const finishOk = () => {
-    if (settled) return;
-    settled = true;
-    markReadyAndEnableStart();
-  };
-  const finishFail = (detail: string) => {
-    if (settled) return;
-    settled = true;
-    showFatal(detail);
-  };
+  // 任何路径：5 秒后按钮绝不再是 disabled，至少能清缓存
+  window.setTimeout(() => {
+    const button = startButton();
+    if (!button) return;
+    if (typeof g.__soldierRushStart === "function") {
+      enableStartGame();
+      return;
+    }
+    if (button.disabled || button.textContent === "请稍候…") {
+      setStatus("加载中…可继续等，或点按钮清缓存");
+      enableClearCache();
+    }
+  }, 5000);
 
-  // 已就绪：直接放行
+  // 已挂上引擎：直接可玩
   if (typeof g.__soldierRushStart === "function") {
-    finishOk();
+    enableStartGame();
     return;
   }
 
-  const slowTip = window.setTimeout(() => {
-    if (!settled) setStatus("手机首次加载较慢，请继续等待…");
-  }, 3500);
-
-  // 8 秒：若引擎已挂上则放行；否则给清缓存
-  const softOk = window.setTimeout(() => {
-    if (settled) return;
+  // 轮询：模块一挂上 start 就亮按钮
+  let polls = 0;
+  const poll = window.setInterval(() => {
+    polls += 1;
     if (typeof g.__soldierRushStart === "function") {
-      finishOk();
+      window.clearInterval(poll);
+      enableStartGame();
       return;
     }
-    setStatus("加载偏慢。可继续等，或清缓存重进。");
-    setButton("清除缓存并刷新", true);
-    bindClearCacheButton();
-  }, 8000);
-
-  const hardFail = window.setTimeout(() => {
-    if (settled) return;
-    if (typeof g.__soldierRushStart === "function") {
-      finishOk();
-      return;
-    }
-    finishFail("加载超时。请点「清除缓存并刷新」。");
-  }, 25000);
+    if (polls >= 100) window.clearInterval(poll); // ~20s
+  }, 200);
 
   void import("./game/game.ts")
     .then(() => {
-      window.clearTimeout(slowTip);
-      window.clearTimeout(softOk);
-      window.clearTimeout(hardFail);
-      // 给模块末尾再一帧挂上 start
+      // 再等一帧，确保末尾赋值完成
       requestAnimationFrame(() => {
-        if (typeof g.__soldierRushStart === "function") finishOk();
-        else finishFail("游戏引擎未注册开始入口，请清除缓存后重试。");
+        if (typeof g.__soldierRushStart === "function") enableStartGame();
+        else {
+          setStatus("引擎加载异常，请清缓存");
+          enableClearCache();
+        }
       });
     })
     .catch((error: unknown) => {
-      window.clearTimeout(slowTip);
-      window.clearTimeout(softOk);
-      window.clearTimeout(hardFail);
       console.error("Soldier Rush failed to boot", error);
       const detail = error instanceof Error ? error.message : String(error);
-      finishFail("加载失败：" + detail);
+      showFatal("加载失败：" + detail);
     });
 }
 
