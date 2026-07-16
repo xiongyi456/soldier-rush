@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-10";
+const BUILD_VERSION = "mg-road-12";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -43,20 +43,18 @@ const BOSS_DEFS = [
   { name: "红点幽灵",   color: 0x5a4a78, accent: 0xff6b9d, unlock: null, theme: "sniper", signature: "红点锁定 · 持续走位" },
   { name: "爆米花将军", color: 0x9a4538, accent: 0xff9d5c, unlock: null, theme: "rocket", signature: "导弹雨 · 钻绿色缺口" },
   { name: "棱镜哨兵",   color: 0x1f7a86, accent: 0x72f5ff, unlock: null, theme: "energy", signature: "切割光刀 · 扩环封路" },
+  { name: "公路终焉王", color: 0x5c1a6b, accent: 0xffd86b, unlock: null, theme: "final", signature: "全招轮转 · 终焉试炼!" },
 ];
-/** 战役主线共 5 个 Boss；击败第 5 个后可选胜利结算或无尽冲锋 */
+/** 公路五害 + 满级终焉王；终焉后可结算或无尽 */
 const CAMPAIGN_BOSS_COUNT = BOSS_DEFS.length;
-/**
- * Boss 召唤门槛：击杀数 或 军衔 满足其一即可（先到先刷）。
- * 不再按固定米数刷 Boss，战斗节奏跟打怪/晋升走。
- */
-/** 只按军衔召唤 Boss（不再看击杀数）。 */
+/** 只按军衔召唤：五害 → 司令后终焉王 */
 const BOSS_SUMMON = [
   { rank: 3 },   // 1 铁罐头 · 下士
   { rank: 5 },   // 2 铁饼 · 上士
   { rank: 7 },   // 3 红点 · 中尉
   { rank: 9 },   // 4 爆米花 · 少校
   { rank: 11 },  // 5 棱镜 · 上校
+  { rank: 13 },  // 6 终焉王 · 司令满级
 ] as const;
 let endlessMode = false;
 
@@ -1319,16 +1317,27 @@ function evolveHero(nextRank = player.level) {
   return true;
 }
 
-/** 小怪耐久轻度跟踪火力：只吃部分攻速/攻击加成，避免“越强化越打不动”。 */
+/**
+ * 小怪耐久跟踪武器强度。
+ * 前中期(≤4级)轻度跟随，保证开局好打；
+ * 5 级起强跟随攻速/攻击/阶段，避免后期秒杀看不见怪。
+ */
 function enemyPowerScale() {
-  const atkBonus = Math.max(0, player.damageBonus);           // 0 ~ 0.8
-  const as = 1 / Math.max(.42, player.fireRateMul);           // 1 ~ ~2.4
+  const mid = player.level >= 5;
+  const atkBonus = Math.max(0, player.damageBonus);
+  const as = 1 / Math.max(.42, player.fireRateMul);
   const asBonus = Math.max(0, as - 1);
-  // 约吃 40% 攻击加成 + 30% 攻速加成，而不是 1:1 反制
-  const power = 1 + atkBonus * .4 + asBonus * .3;
+  const atkW = mid ? .95 : .35;
+  const asW = mid ? .85 : .25;
+  const power = 1 + atkBonus * atkW + asBonus * asW;
   const stage = weaponStageForRank(player.level);
-  const postBoss = bossCount <= 0 ? 1 : 1 + bossCount * .08;
-  return Math.max(.9, power * (1 + (stage - 1) * .03) * postBoss);
+  const stageW = mid ? .12 : .03;
+  // 技能火力也计入一部分（firepower skill）
+  const skillFp = 1 + skillLevel(player.skills, "firepower") * (mid ? .08 : .03);
+  const postBoss = bossCount <= 0 ? 1 : 1 + bossCount * (mid ? .12 : .06);
+  // 5 级后保底血量下限抬高，杜绝“肉眼看不见就死”
+  const floor = mid ? 1.55 : .9;
+  return Math.max(floor, power * (1 + (stage - 1) * stageW) * skillFp * postBoss);
 }
 
 function spawnEnemyHp(type, roll = Math.random(), elite = false) {
@@ -1350,13 +1359,13 @@ function retuneLivingEnemies() {
 }
 
 function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
-  // 下士(3)之后经验衰减，避免「打两下就升」
+  // 前中期稍压；打完公路五害后加速冲司令，好开终焉王
   const rankDamp =
     player.level <= 2 ? 1 :
-    player.level <= 4 ? .72 :
-    player.level <= 7 ? .58 :
-    player.level <= 10 ? .48 :
-    .4;
+    player.level <= 4 ? .78 :
+    player.level <= 7 ? .7 :
+    player.level <= 10 ? (bossCount >= 5 ? .95 : .62) :
+    (bossCount >= 5 ? 1.05 : .55);
   const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .12) * rankDamp;
   const gained = Math.max(1, Math.round(amount * xpMul));
   if (player.prestigeReady) {
@@ -1466,9 +1475,9 @@ function spawnEnemyGroup() {
     else if (gunnersLeft > 0 && i >= Math.ceil(groupSize / 2) && Math.random() < .55) { type = "gunner"; gunnersLeft--; }
     else {
       const roll = Math.random();
-      // 打完第一关后少刷 fodder/normal 脆皮，多刷盾/重装
-      const heavyBias = bossCount >= 1 ? .12 : 0;
-      type = roll < (.54 - heavyBias) ? "normal" : roll < (.82 - heavyBias * .5) ? "shield" : "heavy";
+      // 5 级后多盾/重装，减少“一枪蒸发”的脆皮感
+      const heavyBias = player.level >= 5 ? .22 : bossCount >= 1 ? .12 : 0;
+      type = roll < (.5 - heavyBias) ? "normal" : roll < (.78 - heavyBias * .4) ? "shield" : "heavy";
     }
     let mesh, speed, radius, sc, contactDmg;
     if (type === "fodder") {
@@ -2365,6 +2374,22 @@ function makeBossModel(def, bossNumber) {
     for (const side of [-1, 1]) {
       add(new THREE.ConeGeometry(.2, .5, 10), glowMat, side * .4, 1.0, .8, 1, 1, 1).rotation.x = -Math.PI / 2;
     }
+  } else if (def.theme === "final") {
+    // 公路终焉王：金冠 + 多层环 + 双炮
+    for (let i = 0; i < 4; i++) {
+      const ring = add(new THREE.TorusGeometry(.7 + i * .22, .055, 8, 36), glowMat, 0, 1.5, .05, 1, 1, 1);
+      ring.rotation.set(Math.PI / 2 + i * .1, i * .35, i * .2);
+      root.userData.energyRings ||= [];
+      root.userData.energyRings.push(ring);
+    }
+    add(new THREE.ConeGeometry(.55, .7, 6), armorMat, 0, 2.75, 0, 1, 1, 1);
+    add(new THREE.OctahedronGeometry(.38, 0), coreMat, 0, 2.45, 0, 1, 1.15, 1);
+    for (const side of [-1, 1]) {
+      const cannon = add(new THREE.CylinderGeometry(.12, .18, 1.6, 10), metalMat, side * .85, 1.7, -.7, 1, 1, 1);
+      cannon.rotation.x = Math.PI / 2;
+      add(new THREE.SphereGeometry(.2, 10, 8), glowMat, side * .85, 1.7, -1.45, 1, 1, 1);
+    }
+    add(new THREE.BoxGeometry(1.4, .35, .5), darkMat, 0, .95, .25, 1, 1, 1);
   } else {
     // 棱镜哨兵：悬浮环 + 棱镜灯塔
     for (let i = 0; i < 3; i++) {
@@ -2492,7 +2517,7 @@ function beginBossBattle() {
   const bossNumber = bossCount + 1;
   const def = BOSS_DEFS[(bossNumber - 1) % BOSS_DEFS.length];
   const estimatedDps = estimateBossDps();
-  const maxHp = bossHealth(bossNumber, estimatedDps);
+  const maxHp = Math.round(bossHealth(bossNumber, estimatedDps) * (def.theme === "final" ? 1.5 : 1));
   const mesh = makeBossModel(def, bossNumber);
   mesh.position.set(0, 0, -58); mesh.rotation.y = Math.PI;
   scene.add(mesh);
@@ -2605,8 +2630,17 @@ function defeatBoss() {
   retuneLivingEnemies();
   const bossXp = 55 + defeated.number * 20;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
-  addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
-  flashScreen("#8fd9ff", .35);
+  // 打完公路五害(第5)：大额经验冲刺司令，好开终焉王
+  if (!endlessMode && defeated.number === 5 && player.level < MAX_RANK) {
+    grantHeroXp(280 + (MAX_RANK - player.level) * 40, player.x, PLAYER_Z - 4);
+    addFloatText(0, 5.8, -12, "五害已灭 · 冲刺司令开终焉!", "#ffd86b", 6.4);
+  }
+  if (defeated.def.theme === "final") {
+    addFloatText(player.x, 5.2, PLAYER_Z - 5, "终焉王击破!", "#ffd86b", 6.5);
+  } else {
+    addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
+  }
+  flashScreen(defeated.def.theme === "final" ? "#ffd86b" : "#8fd9ff", .35);
   if (player.level < MAX_RANK) {
     addFloatText(player.x, 4.2, PLAYER_Z - 3, `军衔 ${rankName(player.level)} ${player.level}/${MAX_RANK}`, "#b8f58b", 4.6);
   }
@@ -2617,7 +2651,7 @@ function defeatBoss() {
   killsAtLastBoss = kills;
   lastBossClearDistance = distance;
   bossWarning = false;
-  // 战役终点:第 5 个 Boss 后弹出胜利,可结束或进入无尽冲锋
+  // 战役终点:终焉王(第6)后弹出胜利
   if (!endlessMode && bossCount >= CAMPAIGN_BOSS_COUNT) {
     openCampaignVictory();
     return;
@@ -2632,8 +2666,14 @@ function defeatBoss() {
       addFloatText(0, 4.4, -8, tip, "#ffcc80", 5.2);
     }
   } else {
-    addFloatText(0, 5.5, -10, `战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}`, "#ffe27a", 5.5);
-    if (nextReq) addFloatText(0, 4.4, -8, `下 Boss · 升到 ${rankName(nextReq.rank)}`, "#b8f58b", 5.4);
+    const label = bossCount >= 5 ? `终焉试炼 · ${bossCount}/${CAMPAIGN_BOSS_COUNT}` : `战役 ${bossCount}/5`;
+    addFloatText(0, 5.5, -10, label, "#ffe27a", 5.5);
+    if (nextReq) {
+      const tip = nextReq.rank >= MAX_RANK
+        ? `终焉王 · 升到 ${rankName(nextReq.rank)}`
+        : `下 Boss · 升到 ${rankName(nextReq.rank)}`;
+      addFloatText(0, 4.4, -8, tip, "#b8f58b", 5.4);
+    }
   }
 }
 
@@ -2927,6 +2967,36 @@ function launchBossAttack() {
       }
       break;
     }
+    case "final": {
+      // 终焉王：轮转五害招式，始终留空档
+      const cycle = boss.attackIndex % 5;
+      if (cycle === 0) {
+        queueBossShot("beam", clamp(Math.round(px / 4) * 4, -4, 4), -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.3 });
+        if (phase >= 2) queueBossShot("shell", clamp(-safe, -5, 5), PLAYER_Z, BOSS_WINDUP + 8 + BOSS_FLIGHT.shell, { radius: 1.5 });
+        addFloatText(safe, 4, -10, "终焉压路 · 闪空档!", "#ffd86b", 5.2);
+      } else if (cycle === 1) {
+        queueBossShot("shock", -4.0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 1.85 });
+        queueBossShot("shock", 4.0, PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.shock, { halfWidth: 1.85 });
+        addFloatText(0, 4, -8, "终焉盾波 · 走中间!", "#ffd86b", 5);
+      } else if (cycle === 2) {
+        queueBossShot("lock", px, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.lock, { radius: 1.05 });
+        if (phase >= 2) queueBossShot("lock", clamp(px + (px >= 0 ? -2.2 : 2.2), -5, 5), PLAYER_Z, BOSS_WINDUP + 10 + BOSS_FLIGHT.lock, { radius: 1.0 });
+        addFloatText(0, 4, -10, "终焉红点 · 侧移!", "#ffd86b", 5.2);
+      } else if (cycle === 3) {
+        queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.gap, { safeHalf: 1.85 });
+        if (phase >= 2) {
+          let rx = clamp(px + rand(-3, 3), -5.5, 5.5);
+          if (Math.abs(rx - safe) < 2) rx = clamp(safe + 2.6, -5.5, 5.5);
+          queueBossShot("rain", rx, PLAYER_Z, BOSS_WINDUP + 8 + BOSS_FLIGHT.rain, { radius: 1.15 });
+        }
+        addFloatText(safe, 4, -8, "终焉地毯 · 钻绿缺口!", "#ffd86b", 5.3);
+      } else {
+        queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.1 + phase * .2 });
+        addFloatText(0, 4, -8, "终焉扩环 · 环外/圆心!", "#ffd86b", 5.2);
+      }
+      break;
+    }
+    case "energy":
     default: {
       // 棱镜: one readable threat at a time + always a standable lane
       if (pattern === 0) {
@@ -2934,11 +3004,9 @@ function launchBossAttack() {
         if (phase >= 3) queueBossShot("shell", clamp(-px, -4.5, 4.5), PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.shell, { radius: 1.4 });
         addFloatText(safe, 4, -10, "棱镜光刀 · 闪到空档!", "#72f5ff", 5);
       } else if (pattern === 1) {
-        // Single expanding ring — never two stacked rings that seal the whole road.
         queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.0 + phase * .25 });
         addFloatText(0, 4, -8, "扩环 · 站到环外或圆心!", "#79fbff", 5.2);
       } else {
-        // Outer beams only; middle corridor is always open.
         queueBossShot("beam", -4.8, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.1 });
         queueBossShot("beam", 4.8, -12, BOSS_WINDUP + 6 + BOSS_FLIGHT.beam, { halfWidth: 1.1 });
         addFloatText(0, 4, -8, "棱镜栅栏 · 走中间!", "#5ee7ff", 5);
@@ -3782,7 +3850,7 @@ function openCampaignVictory() {
   if (victoryTitleEl) victoryTitleEl.textContent = "战役胜利!";
   if (victorySubtitleEl) {
     victorySubtitleEl.textContent =
-      `击破公路五害全部 ${CAMPAIGN_BOSS_COUNT} 名 · 得分 ${Math.floor(score)} · 前进 ${Math.floor(distance)}m。可结算本局，或进入更难的无尽冲锋。`;
+      `击破公路五害与终焉王 · 得分 ${Math.floor(score)} · 前进 ${Math.floor(distance)}m。可结算本局，或进入更难的无尽冲锋。`;
   }
   if (victoryPanelEl) {
     victoryPanelEl.classList.remove("hidden");
@@ -3824,7 +3892,7 @@ function endCampaignVictory() {
     "战役胜利!<br>得分 <b style='color:#ffd54f'>" + Math.floor(score) +
     "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
     "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>" +
-    "<br><span style='font-size:14px;color:#b8f58b'>已击败公路五害全部 " + CAMPAIGN_BOSS_COUNT + " 名 Boss</span>";
+    "<br><span style='font-size:14px;color:#b8f58b'>已击败公路五害 + 终焉王</span>";
   startBtn.textContent = "再来一局";
   saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
   saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
@@ -3931,10 +3999,11 @@ function updateHUD() {
   else {
     const req = currentBossRequirement();
     if (req && !endlessMode) {
-      b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT} · 升${rankName(req.rank)}召唤</span>`;
+      const tag = bossCount >= 5 ? "终焉" : "战役";
+      b += `<span style="color:#ffe27a">${tag} ${Math.min(bossCount, 5)}/5 · 升${rankName(req.rank)}</span>`;
     } else if (req) {
-      b += `<span style="color:#ff8a65">无尽 · 升${rankName(req.rank)}召唤</span>`;
-    } else if (!endlessMode) b += `<span style="color:#ffe27a">战役 ${bossCount}/${CAMPAIGN_BOSS_COUNT}</span>`;
+      b += `<span style="color:#ff8a65">无尽 · 升${rankName(req.rank)}</span>`;
+    } else if (!endlessMode) b += `<span style="color:#ffe27a">战役 ${Math.min(bossCount, 5)}/5</span>`;
     else b += `<span style="color:#ff8a65">无尽 · ${bossCount} 战</span>`;
   }
   b += `<span style="color:#4fc3f7">每轮 ${inheritedShotDirections().length} 弹 · ${(60 / effectiveFireInterval()).toFixed(1)}轮/秒</span>`;

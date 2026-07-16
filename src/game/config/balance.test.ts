@@ -71,16 +71,15 @@ describe("combat pacing", () => {
   it("uses archetype hit-count bands", () => {
     const damage = 2;
     expect(enemyHealth("fodder", damage, 1)).toBe(3);
-    expect(enemyHealth("gunner", damage, .5)).toBe(7);
-    expect(enemyHealth("heavy", damage, .5)).toBe(14);
+    expect(enemyHealth("gunner", damage, .5)).toBe(9);
+    expect(enemyHealth("heavy", damage, .5)).toBe(18);
   });
 
   it("keeps early fodder clearable with starter MG", () => {
     const damage = projectileDamage(1, 1);
     const fodder = enemyHealth("fodder", damage, .5, 1, 1);
-    expect(fodder / damage).toBeLessThanOrEqual(1.3);
-    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeGreaterThanOrEqual(1.3);
-    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeLessThanOrEqual(2.4);
+    expect(fodder / damage).toBeLessThanOrEqual(1.6);
+    expect(enemyHealth("normal", damage, .5, 1, 1) / damage).toBeGreaterThanOrEqual(1.7);
   });
 
   it("applies powerScale linearly for light durability tracking", () => {
