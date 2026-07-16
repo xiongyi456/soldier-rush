@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-18";
+const BUILD_VERSION = "mg-road-19";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -4216,75 +4216,90 @@ function clearWorld() {
 }
 
 function startGame() {
-  if (demoSoldier.parent) { scene.remove(demoSoldier); disposeSoldierMesh(demoSoldier); }
-  clearWorld();
-  camera.position.set(0, cameraBase.y, cameraBase.z);   // 复位摄像机(待机演示会移动它)
-  camera.lookAt(0, 0, cameraBase.lookZ);
-  player.soldiers.forEach(removePlayerUnit);
-  player.soldiers = [];
-  nextUnitId = 1; nextEnemyId = 1;
-  player.x = 0; player.tx = null; player.vx = 0; player.lastX = 0;
-  player.damageBonus = 0; player.fireRateMul = 1;
-  player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0; player.moveSlowT = 0;
-  player.xp = 0; player.level = 1; player.skills = {}; player.pendingPromotion = false; player.prestigeReady = false;
-  player.shieldKillProgress = 0; player.airstrikeKillProgress = 0;
-  createHero();
-  frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
-  combo = 0; comboTimer = 0; critT = 0; shake = 0;
-  bossCount = 0; killsAtLastBoss = 0; lastBossClearDistance = 0; bossWarning = false; bossSummonCd = 0; endlessMode = false;
-  eventIndex = 0; nextEventAt = 180; eventHordeT = 0;
-  victoryPanelEl?.classList.add("hidden");
-  cameraFollowX = 0; screenFlashT = 0;
-  screenFlashEl.style.opacity = "0"; speedFxEl.style.opacity = "0";
-  spawnEnemyCd = 110; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
-  weather.reset();
-  overlay.classList.add("hidden");
-  overlay.classList.remove("game-over");
-  choicePanelEl.classList.add("hidden");
-  prestigePanelEl.classList.add("hidden");
-  hud.classList.remove("hidden");
-  vitalsHudEl.classList.remove("hidden");
-  statusToggle.classList.remove("hidden");
-  rankBadgeEl.classList.remove("hidden");
-  statsPanel.classList.add("hidden"); uiPaused = false;
-  updateHUD();
-  running = true;
-  accumulator = 0;
-  lastLoopTime = performance.now();
-  if (mobileDevice) {
-    controlHint.classList.add("show");
-    setTimeout(() => controlHint.classList.remove("show"), 2200);
+  try {
+    if (demoSoldier?.parent) { scene.remove(demoSoldier); disposeSoldierMesh(demoSoldier); }
+    clearWorld();
+    camera.position.set(0, cameraBase.y, cameraBase.z);
+    camera.lookAt(0, 0, cameraBase.lookZ);
+    player.soldiers.forEach(removePlayerUnit);
+    player.soldiers = [];
+    nextUnitId = 1; nextEnemyId = 1;
+    player.x = 0; player.tx = null; player.vx = 0; player.lastX = 0;
+    player.damageBonus = 0; player.fireRateMul = 1;
+    player.shield = 0; player.spreadT = 0; player.slowT = 0; player.hurtT = 0; player.moveSlowT = 0;
+    player.xp = 0; player.level = 1; player.skills = {}; player.pendingPromotion = false; player.prestigeReady = false;
+    player.shieldKillProgress = 0; player.airstrikeKillProgress = 0;
+    createHero();
+    frame = 0; score = 0; kills = 0; distance = 0; worldSpeed = 0.25;
+    combo = 0; comboTimer = 0; critT = 0; shake = 0;
+    bossCount = 0; killsAtLastBoss = 0; lastBossClearDistance = 0; bossWarning = false; bossSummonCd = 0; endlessMode = false;
+    eventIndex = 0; nextEventAt = 180; eventHordeT = 0;
+    victoryPanelEl?.classList.add("hidden");
+    cameraFollowX = 0; screenFlashT = 0;
+    if (screenFlashEl) screenFlashEl.style.opacity = "0";
+    if (speedFxEl) speedFxEl.style.opacity = "0";
+    spawnEnemyCd = 110; spawnCrateCd = 130; spawnGateCd = 450; spawnTrapCd = 320;
+    weather?.reset?.();
+    overlay?.classList.add("hidden");
+    overlay?.classList.remove("game-over");
+    choicePanelEl?.classList.add("hidden");
+    prestigePanelEl?.classList.add("hidden");
+    hud?.classList.remove("hidden");
+    vitalsHudEl?.classList.remove("hidden");
+    statusToggle?.classList.remove("hidden");
+    rankBadgeEl?.classList.remove("hidden");
+    statsPanel?.classList.add("hidden");
+    uiPaused = false;
+    try { updateHUD(); } catch { /* ignore hud glitches */ }
+    running = true;
+    accumulator = 0;
+    lastLoopTime = performance.now();
+    if (mobileDevice && controlHint) {
+      controlHint.classList.add("show");
+      setTimeout(() => controlHint.classList.remove("show"), 2200);
+    }
+  } catch (error) {
+    console.error("startGame failed", error);
+    running = false;
+    alert("开始游戏失败，请清除缓存后重试：\n" + (error?.message || error));
   }
 }
 
 function endGame() {
   running = false;
-  speedFxEl.style.opacity = "0";
+  if (speedFxEl) speedFxEl.style.opacity = "0";
   activePointerId = null;
   player.tx = null;
-  resultText.innerHTML =
-    "游戏结束!<br>得分 <b style='color:#ffd54f'>" + Math.floor(score) +
-    "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
-    "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>";
-  startBtn.textContent = "再来一局";
+  if (resultText) {
+    resultText.innerHTML =
+      "游戏结束!<br>得分 <b style='color:#ffd54f'>" + Math.floor(score) +
+      "</b> · 击杀 <b style='color:#ff8a65'>" + kills +
+      "</b> · 前进 <b style='color:#4fc3f7'>" + Math.floor(distance) + " m</b>";
+  }
+  if (startBtn) startBtn.textContent = "再来一局";
   saveData.bestScore = Math.max(saveData.bestScore, Math.floor(score));
   saveData.bestDistance = Math.max(saveData.bestDistance, Math.floor(distance));
   persistSave();
   renderProgressText();
-  bossBarEl.classList.add("hidden");
-  hud.classList.add("hidden");
-  vitalsHudEl.classList.add("hidden");
-  statusToggle.classList.add("hidden");
-  rankBadgeEl.classList.add("hidden");
-  choicePanelEl.classList.add("hidden");
-  prestigePanelEl.classList.add("hidden");
+  bossBarEl?.classList.add("hidden");
+  hud?.classList.add("hidden");
+  vitalsHudEl?.classList.add("hidden");
+  statusToggle?.classList.add("hidden");
+  rankBadgeEl?.classList.add("hidden");
+  choicePanelEl?.classList.add("hidden");
+  prestigePanelEl?.classList.add("hidden");
   victoryPanelEl?.classList.add("hidden");
-  statsPanel.classList.add("hidden"); uiPaused = false;
-  overlay.classList.add("game-over");
-  overlay.classList.remove("hidden");
+  statsPanel?.classList.add("hidden");
+  uiPaused = false;
+  overlay?.classList.add("game-over");
+  overlay?.classList.remove("hidden");
 }
 function requestStartGame() {
-  if (!running) startGame();
+  try {
+    if (!running) startGame();
+  } catch (error) {
+    console.error("requestStartGame failed", error);
+  }
 }
 // 尽早挂上，main 一 load 完就能点开始（不必等 demo/loop 之后）
 (globalThis as any).__soldierRushStart = requestStartGame;
