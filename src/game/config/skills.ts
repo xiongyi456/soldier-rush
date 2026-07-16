@@ -27,7 +27,7 @@ export const SKILL_DEFS: readonly SkillDefinition[] = [
   { id: "mines", name: "感应地雷", category: "tactical", icon: "◎", maxLevel: 3, description: l => `击杀时 ${[35, 50, 65][l - 1]}% 埋雷，半径内造成 ${[1.2, 1.6, 2.1][l - 1]} 倍弹伤` },
   { id: "drone", name: "僚机支援", category: "support", icon: "◆", maxLevel: 3, description: l => `部署 ${l} 架自动射击僚机` },
   { id: "airstrike", name: "自动空袭", category: "support", icon: "☄", maxLevel: 3, description: l => `每 ${[30, 24, 18][l - 1]} 次击杀发动空袭` },
-  { id: "orbit", name: "环绕光刃", category: "support", icon: "◉", maxLevel: 3, description: l => `环绕 ${l + 1} 道光刃，接触敌人造成持续伤害` },
+  { id: "salvo", name: "齐射支援", category: "support", icon: "⇉", maxLevel: 3, description: l => `每 ${[7, 5.5, 4][l - 1]} 秒自动向最近敌人齐射 ${2 + l} 发` },
 ] as const;
 
 export type SkillLevels = Record<string, number>;

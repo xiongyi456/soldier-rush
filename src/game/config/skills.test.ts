@@ -4,7 +4,8 @@ import { chooseSkillOptions, SKILL_DEFS } from "./skills";
 describe("skill choices", () => {
   it("contains the planned skill roster including mechanism skills", () => {
     expect(SKILL_DEFS).toHaveLength(18);
-    expect(SKILL_DEFS.map(skill => skill.id)).toEqual(expect.arrayContaining(["ricochet", "mines", "orbit"]));
+    expect(SKILL_DEFS.map(skill => skill.id)).toEqual(expect.arrayContaining(["ricochet", "mines", "salvo"]));
+    expect(SKILL_DEFS.map(skill => skill.id)).not.toContain("orbit");
   });
 
   it("offers three unique non-maxed options", () => {

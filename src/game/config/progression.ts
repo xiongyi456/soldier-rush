@@ -12,21 +12,24 @@ export interface RankDefinition {
  * Total ladder XP (新兵→司令) ≈ 1835; kill XP is small so ranks drip, not explode.
  * Single weapon: always 机关枪. Power stage rises with rank; AS/ATK mainly from gates & crates.
  */
-/** 配合更高击杀 XP：前中期军衔节奏更快，便于按军衔召唤 Boss。 */
+/**
+ * 前两级快一点摸到下士；3 级（下士）之后抬高门槛，避免连升。
+ * Boss 仍按军衔召唤：3/5/7/9/11。
+ */
 export const RANK_DEFS: readonly RankDefinition[] = [
-  { name: "新兵", xpToNext: 40, visualStage: 0 },
-  { name: "列兵", xpToNext: 55, visualStage: 0 },
-  { name: "下士", xpToNext: 70, visualStage: 1 },
-  { name: "中士", xpToNext: 90, visualStage: 1 },
-  { name: "上士", xpToNext: 110, visualStage: 1 },
-  { name: "少尉", xpToNext: 130, visualStage: 2 },
-  { name: "中尉", xpToNext: 155, visualStage: 2 },
-  { name: "上尉", xpToNext: 180, visualStage: 2 },
-  { name: "少校", xpToNext: 210, visualStage: 3 },
-  { name: "中校", xpToNext: 240, visualStage: 3 },
-  { name: "上校", xpToNext: 275, visualStage: 3 },
-  { name: "将军", xpToNext: 310, visualStage: 4 },
-  { name: "司令", xpToNext: 350, visualStage: 4 },
+  { name: "新兵", xpToNext: 45, visualStage: 0 },
+  { name: "列兵", xpToNext: 70, visualStage: 0 },
+  { name: "下士", xpToNext: 120, visualStage: 1 },
+  { name: "中士", xpToNext: 160, visualStage: 1 },
+  { name: "上士", xpToNext: 200, visualStage: 1 },
+  { name: "少尉", xpToNext: 250, visualStage: 2 },
+  { name: "中尉", xpToNext: 300, visualStage: 2 },
+  { name: "上尉", xpToNext: 360, visualStage: 2 },
+  { name: "少校", xpToNext: 430, visualStage: 3 },
+  { name: "中校", xpToNext: 510, visualStage: 3 },
+  { name: "上校", xpToNext: 600, visualStage: 3 },
+  { name: "将军", xpToNext: 700, visualStage: 4 },
+  { name: "司令", xpToNext: 800, visualStage: 4 },
 ] as const;
 
 export const MAX_RANK = RANK_DEFS.length;

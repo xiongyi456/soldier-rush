@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-9";
+const BUILD_VERSION = "mg-road-10";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -953,7 +953,7 @@ let enemyAimHazards = [];
 let particles = [];      // {mesh, vx, vy, vz, life}
 let floatTexts = [];     // {sprite, life}
 let playerMines = [];    // 感应地雷 {mesh, x, z, life, dmg, radius}
-let orbitBlades = [];    // 环绕光刃 {mesh, angle, radius, dmgCd}
+let salvoCd = 0;         // 齐射支援冷却（帧）
 let spawnEnemyCd = 110, spawnCrateCd = 150;
 let gates = [], spawnGateCd = 500;          // 选择门
 let traps = [], spawnTrapCd = 320;           // 小范围陷阱
@@ -1350,7 +1350,14 @@ function retuneLivingEnemies() {
 }
 
 function grantHeroXp(amount, x = player.x, z = PLAYER_Z) {
-  const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .12);
+  // 下士(3)之后经验衰减，避免「打两下就升」
+  const rankDamp =
+    player.level <= 2 ? 1 :
+    player.level <= 4 ? .72 :
+    player.level <= 7 ? .58 :
+    player.level <= 10 ? .48 :
+    .4;
+  const xpMul = (1 + saveData.medals * .02) * (1 + skillLevel(player.skills, "study") * .12) * rankDamp;
   const gained = Math.max(1, Math.round(amount * xpMul));
   if (player.prestigeReady) {
     player.xp = COMMANDER_MERIT;
@@ -1517,14 +1524,14 @@ function shatterEnemy(e) {
 }
 
 function killXpForEnemy(e) {
-  // 提速军衔：小怪给更多 XP，重装/精英更香
+  // 基础 XP；3 级后由 grantHeroXp 的 rankDamp 再压一层
   const base =
-    e.type === "fodder" ? 4 :
-    e.type === "gunner" ? 8 :
-    e.type === "shield" ? 7 :
-    e.type === "heavy" ? 12 :
-    5;
-  return e.elite ? base + 8 : base;
+    e.type === "fodder" ? 3 :
+    e.type === "gunner" ? 6 :
+    e.type === "shield" ? 5 :
+    e.type === "heavy" ? 9 :
+    4;
+  return e.elite ? base + 6 : base;
 }
 
 /** 击杀小概率掉小技能：自动 +1 级，不弹三选一面板 */
@@ -1547,7 +1554,6 @@ function tryDropKillSkillChip(e, x, z) {
     hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
   }
   if (skill.id === "drone") syncDrones();
-  if (skill.id === "orbit") syncOrbitBlades();
   const color = skill.category === "attack" ? "#ff8a65" : skill.category === "defense" ? "#66e7ff" : "#d7a4ff";
   addImpactRing(x, .1, z, new THREE.Color(color).getHex(), 2.4);
   addFloatText(x, 3.6, z, `${skill.icon} ${skill.name} Lv.${player.skills[skill.id]}`, color, 5.2);
@@ -1598,7 +1604,7 @@ function killEnemy(e) {
   if (combo >= 15)  { player.slowT = Math.max(player.slowT, 420); addFloatText(player.x, 5, -8, "连杀×15 时间减速!", "#fff176", 6.5); flashScreen("#fff176", .26); addShockwave(player.x, .1, PLAYER_Z, 0xfff176, 5); addShake(.28); triggerHitStop(2); combo = 0; }
 }
 
-/* ================= 机制技能:弹射 / 地雷 / 环绕光刃 ================= */
+/* ================= 机制技能:弹射 / 地雷 / 齐射支援 ================= */
 function tryRicochet(fromEnemy, dmg, excludeIds) {
   const level = skillLevel(player.skills, "ricochet");
   if (level <= 0 || !fromEnemy) return;
@@ -1702,64 +1708,56 @@ function updatePlayerMines() {
   });
 }
 
-function syncOrbitBlades() {
-  const level = skillLevel(player.skills, "orbit");
-  const wanted = level > 0 ? level + 1 : 0;
-  while (orbitBlades.length < wanted) {
-    const mat = new THREE.MeshBasicMaterial({ color: 0x7df6ff, transparent: true, opacity: .9, toneMapped: false, blending: THREE.AdditiveBlending, depthWrite: false });
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(.28, .07, 6, 16), mat);
-    mesh.rotation.x = Math.PI / 2;
-    scene.add(mesh);
-    orbitBlades.push({ mesh, mat, angle: (orbitBlades.length / Math.max(1, wanted)) * Math.PI * 2, radius: 1.55, dmgCd: 0 });
-  }
-  while (orbitBlades.length > wanted) {
-    const blade = orbitBlades.pop();
-    scene.remove(blade.mesh);
-    blade.mesh.geometry.dispose();
-    blade.mat.dispose();
-  }
-}
-
-function updateOrbitBlades(t) {
-  const level = skillLevel(player.skills, "orbit");
-  if (level <= 0) {
-    if (orbitBlades.length) syncOrbitBlades();
-    return;
-  }
-  if (orbitBlades.length !== level + 1) syncOrbitBlades();
-  const dmg = standardProjectileDamage() * (.35 + level * .12);
-  const spin = 2.4 + level * .35;
-  orbitBlades.forEach((blade, i) => {
-    blade.angle += spin / 60;
-    const x = player.x + Math.cos(blade.angle + i) * blade.radius;
-    const z = PLAYER_Z + Math.sin(blade.angle + i) * blade.radius * .55;
-    blade.mesh.position.set(x, 1.05, z);
-    blade.mesh.rotation.z += .12;
-    blade.mat.opacity = .7 + Math.sin(t * 8 + i) * .2;
-    if (blade.dmgCd > 0) blade.dmgCd--;
-    if (blade.dmgCd > 0) return;
+/** 齐射支援：周期性向最近敌人/Boss 额外打出一排机关枪弹 */
+function fireSalvoSupport() {
+  const level = skillLevel(player.skills, "salvo");
+  if (level <= 0) return;
+  let target = null;
+  if (boss) target = boss.mesh.position;
+  else {
+    let bestZ = -Infinity;
     for (const e of enemies) {
       if (e.dead) continue;
-      const dx = e.mesh.position.x - x;
-      const dz = e.mesh.position.z - z;
-      if (dx * dx + dz * dz < (e.radius + .45) ** 2) {
-        e.hp -= dmg;
-        e.mesh.userData.hit = 1;
-        drawHpLabel(e);
-        blade.dmgCd = 10;
-        if (e.hp <= 0) killEnemy(e);
-        break;
+      if (e.mesh.position.z > bestZ && e.mesh.position.z < PLAYER_Z + 2) {
+        bestZ = e.mesh.position.z;
+        target = e.mesh.position;
       }
     }
-    if (boss && blade.dmgCd <= 0) {
-      const dx = boss.mesh.position.x - x;
-      const dz = boss.mesh.position.z - z;
-      if (dx * dx + dz * dz < 3.2) {
-        damageBoss(dmg * .65, x, z);
-        blade.dmgCd = 12;
-      }
-    }
-  });
+  }
+  if (!target) return;
+  const count = 2 + level;
+  const dmg = standardProjectileDamage() * (.55 + level * .12);
+  const def = WEAPON_DEFS.rifle;
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : (i / (count - 1) - .5);
+    const aimX = target.x + t * 1.1;
+    const dz = Math.max(6, PLAYER_Z - target.z);
+    const vx = clamp((aimX - player.x) / (dz / def.speed), -.28, .28);
+    const mesh = bulletMeshPool.acquire();
+    mesh.visible = true;
+    mesh.material = bulletMaterial("rifle");
+    mesh.position.set(player.x + t * .25, 1.15, PLAYER_Z - 1.05);
+    mesh.rotation.y = Math.atan2(-vx, def.speed);
+    mesh.scale.set(1.05, 1.05, 1.2);
+    scene.add(mesh);
+    bullets.push({
+      mesh, weaponId: "rifle", type: "bullet", vx, dmg,
+      px: mesh.position.x, pz: mesh.position.z, speed: def.speed * 1.08,
+      pierce: 1 + skillLevel(player.skills, "pierce"),
+      radius: 0, blastMul: 1, starburst: false, hitIds: new Set(),
+    });
+  }
+  addMuzzleFlash(player.x, PLAYER_Z - 1.2);
+  addFloatText(player.x, 3.2, PLAYER_Z - 2, "齐射!", "#7df6ff", 3.6);
+}
+
+function updateSalvoSupport() {
+  const level = skillLevel(player.skills, "salvo");
+  if (level <= 0) { salvoCd = 0; return; }
+  if (salvoCd > 0) { salvoCd--; return; }
+  const interval = [7, 5.5, 4][level - 1] * 60;
+  fireSalvoSupport();
+  salvoCd = interval;
 }
 
 /* ================= 中期事件波 ================= */
@@ -1859,7 +1857,7 @@ function gateGrantSkill(skillId) {
     hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
   }
   if (skillId === "drone") syncDrones();
-  if (skillId === "orbit") syncOrbitBlades();
+  if (skillId === "salvo") salvoCd = Math.min(salvoCd || 90, 90);
   addFloatText(player.x, 4.0, PLAYER_Z - 1, `${def.icon} ${def.name} Lv.${player.skills[skillId]}`, "#ffe27a", 5.0);
 }
 const GATE_BUFFS = [
@@ -2605,7 +2603,7 @@ function defeatBoss() {
   player.fireRateMul = Math.max(.42, player.fireRateMul * .88);
   player.damageBonus = Math.min(.8, player.damageBonus + .06);
   retuneLivingEnemies();
-  const bossXp = 70 + defeated.number * 25;
+  const bossXp = 55 + defeated.number * 20;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
   addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
   flashScreen("#8fd9ff", .35);
@@ -3122,7 +3120,7 @@ function update() {
   weather.update(distance);
   updateRain();
   updatePlayerMines();
-  updateOrbitBlades(t);
+  updateSalvoSupport();
   speedFxEl.style.opacity = critT > 0 ? ".16" : combo >= 5 ? ".09" : "0";
 
   /* 树木循环 */
@@ -3747,7 +3745,7 @@ function selectSkill(index) {
     hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
   }
   syncDrones();
-  if (skill.id === "orbit") syncOrbitBlades();
+  if (skill.id === "salvo") salvoCd = Math.min(salvoCd || 90, 90);
   const color = skill.category === "attack" ? 0xff754d : skill.category === "defense" ? 0x66e7ff : 0xbc8cff;
   addParticles(player.x, 1.5, PLAYER_Z, `#${color.toString(16).padStart(6, "0")}`, mobileDevice ? 28 : 46, .38);
   addImpactRing(player.x, .08, PLAYER_Z, color, 5.4);
@@ -3926,7 +3924,7 @@ function updateHUD() {
   if (player.damageBonus > 0) b += `<span style="color:#ff8a65">火力 +${Math.round(player.damageBonus * 100)}%</span>`;
   if (skillLevel(player.skills, "ricochet") > 0) b += `<span style="color:#9ad8ff">弹射 Lv.${skillLevel(player.skills, "ricochet")}</span>`;
   if (skillLevel(player.skills, "mines") > 0) b += `<span style="color:#ffb22e">地雷 Lv.${skillLevel(player.skills, "mines")}</span>`;
-  if (skillLevel(player.skills, "orbit") > 0) b += `<span style="color:#7df6ff">光刃 ×${skillLevel(player.skills, "orbit") + 1}</span>`;
+  if (skillLevel(player.skills, "salvo") > 0) b += `<span style="color:#7df6ff">齐射 Lv.${skillLevel(player.skills, "salvo")}</span>`;
   if (eventHordeT > 0) b += `<span style="color:#ff8a65">敌潮 ${Math.ceil(eventHordeT / 60)}s</span>`;
   if (boss) b += `<span style="color:#ffd54f">${boss.def.name} · 阶段${boss.phase || 1}</span>`;
   else if (bossWarning) b += `<span style="color:#ffb74d">Boss 降临中…</span>`;
@@ -4057,8 +4055,7 @@ function clearWorld() {
     mine.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   });
   playerMines = [];
-  orbitBlades.forEach(blade => { scene.remove(blade.mesh); blade.mesh.geometry.dispose(); blade.mat.dispose(); });
-  orbitBlades = [];
+  salvoCd = 0;
   if (boss) { scene.remove(boss.mesh); disposeSoldierMesh(boss.mesh); boss = null; }
   bossHazards.forEach(disposeBossHazard);
   bossHazards = [];
