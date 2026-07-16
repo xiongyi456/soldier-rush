@@ -28,9 +28,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],
       manifest: {
-        name: "士兵冲锋 3D：司令之路",
+        name: "士兵冲锋 3D：豆丁的司令之路",
         short_name: "士兵冲锋",
-        description: "原创战斗Q版单人3D冲锋游戏：军衔、技能构筑、Boss与转生",
+        description: "Q版豆丁冲锋：军衔进化、击杀召唤公路五害、技能构筑与授勋转生",
         lang: "zh-CN",
         display: "fullscreen",
         orientation: "any",
