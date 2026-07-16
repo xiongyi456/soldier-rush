@@ -23,7 +23,7 @@ import {
 import { nextEventDistance, pickRunEvent } from "./config/events.ts";
 import { compactInPlace } from "./util/compact.ts";
 
-const BUILD_VERSION = "mg-road-5";
+const BUILD_VERSION = "mg-road-6";
 
 /* ================= 基础场景 ================= */
 const ROAD_HALF = 8;          // 道路半宽
@@ -1516,14 +1516,43 @@ function shatterEnemy(e) {
 }
 
 function killXpForEnemy(e) {
-  // Keep kill XP low: ranks come from many kills + bosses, not one wave.
+  // 提速军衔：小怪给更多 XP，重装/精英更香
   const base =
-    e.type === "fodder" ? 1 :
-    e.type === "gunner" ? 2 :
-    e.type === "shield" ? 2 :
-    e.type === "heavy" ? 3 :
-    1;
-  return e.elite ? base + 2 : base;
+    e.type === "fodder" ? 4 :
+    e.type === "gunner" ? 8 :
+    e.type === "shield" ? 7 :
+    e.type === "heavy" ? 12 :
+    5;
+  return e.elite ? base + 8 : base;
+}
+
+/** 击杀小概率掉小技能：自动 +1 级，不弹三选一面板 */
+function tryDropKillSkillChip(e, x, z) {
+  if (player.pendingPromotion || player.prestigeReady || uiPaused) return;
+  const chance =
+    e.elite ? .28 :
+    e.type === "heavy" ? .18 :
+    e.type === "gunner" || e.type === "shield" ? .12 :
+    e.type === "fodder" ? .06 :
+    .09;
+  if (Math.random() > chance) return;
+  const available = SKILL_DEFS.filter(skill => skillLevel(player.skills, skill.id) < skill.maxLevel);
+  if (!available.length) return;
+  const skill = available[Math.floor(Math.random() * available.length)];
+  player.skills[skill.id] = skillLevel(player.skills, skill.id) + 1;
+  const hero = heroUnit();
+  if (hero && skill.id === "armor") {
+    hero.maxArmor += 8;
+    hero.armor = Math.min(hero.maxArmor, hero.armor + 8);
+  }
+  if (skill.id === "drone") syncDrones();
+  if (skill.id === "orbit") syncOrbitBlades();
+  const color = skill.category === "attack" ? "#ff8a65" : skill.category === "defense" ? "#66e7ff" : "#d7a4ff";
+  addImpactRing(x, .1, z, new THREE.Color(color).getHex(), 2.4);
+  addFloatText(x, 3.6, z, `${skill.icon} ${skill.name} Lv.${player.skills[skill.id]}`, color, 5.2);
+  addFloatText(player.x, 4.2, PLAYER_Z - 1.2, "技能碎片!", color, 4.4);
+  flashScreen(color, .16);
+  score += 20;
 }
 
 /* 击杀结算:得分 + 经验 + 连杀链 */
@@ -1533,6 +1562,7 @@ function killEnemy(e) {
   score += e.score + (e.elite ? 40 : 0);
   const ep = e.mesh.position;
   grantHeroXp(killXpForEnemy(e), ep.x, ep.z + .4);
+  tryDropKillSkillChip(e, ep.x, ep.z);
   shatterEnemy(e);
   addImpactRing(ep.x, .08, ep.z, e.type === "shield" ? 0x8dd8ed : 0xff765f, e.type === "heavy" ? 2.0 : 1.2);
   addFloatText(ep.x, 2.2, ep.z, "+" + (e.score + (e.elite ? 40 : 0)), e.elite ? "#d7a4ff" : "#ffd54f");
@@ -2546,7 +2576,7 @@ function defeatBoss() {
   player.fireRateMul = Math.max(.42, player.fireRateMul * .88);
   player.damageBonus = Math.min(.8, player.damageBonus + .06);
   retuneLivingEnemies();
-  const bossXp = 40 + defeated.number * 15;
+  const bossXp = 70 + defeated.number * 25;
   grantHeroXp(bossXp, player.x, PLAYER_Z - 5);
   addFloatText(player.x, 5.2, PLAYER_Z - 5, "Boss击破 · 攻速/攻击提升!", "#8fd9ff", 6.2);
   flashScreen("#8fd9ff", .35);
