@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { chooseSkillOptions, SKILL_DEFS } from "./skills";
 
 describe("skill choices", () => {
-  it("contains all fifteen planned skills", () => {
-    expect(SKILL_DEFS).toHaveLength(15);
+  it("contains the planned skill roster including mechanism skills", () => {
+    expect(SKILL_DEFS).toHaveLength(18);
+    expect(SKILL_DEFS.map(skill => skill.id)).toEqual(expect.arrayContaining(["ricochet", "mines", "orbit"]));
   });
 
   it("offers three unique non-maxed options", () => {
