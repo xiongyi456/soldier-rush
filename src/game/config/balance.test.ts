@@ -63,8 +63,8 @@ describe("combat pacing", () => {
     expect(values[5] / values[0]).toBeLessThan(1.8);
   });
 
-  it("inherits the fastest weapon cadence without passing the safety floor", () => {
-    expect([24, 9, 9, 9, 9, 7].map(rate => fireInterval(rate))).toEqual([24, 9, 9, 9, 9, 7]);
+  it("respects each weapon cadence floor without going below the safety floor", () => {
+    expect([24, 9, 38, 64, 78, 7].map(rate => fireInterval(rate))).toEqual([24, 9, 38, 64, 78, 7]);
     expect(fireInterval(7, .65, 5)).toBe(7);
   });
 

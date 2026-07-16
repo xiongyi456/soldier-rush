@@ -1069,21 +1069,21 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function addParticles(x, y, z, color, n = 10, spd = 0.22) {
   const cap = quality.particleCap;
-  // Prefer short-lived hits over infinite confetti during dense combat.
   const room = Math.max(0, cap - particles.length);
-  const count = Math.min(n, room, quality.level === "low" ? 8 : mobileDevice ? 12 : 18);
+  // Hard clamp burst size — debris was reading as permanent screen confetti.
+  const count = Math.min(n, room, quality.level === "low" ? 4 : mobileDevice ? 6 : 8);
   for (let i = 0; i < count; i++) {
     const m = particleMeshPool.acquire();
     m.visible = true;
     m.material = pMat(color);
     m.position.set(x, y, z);
-    m.scale.setScalar(rand(0.65, 1.45));
+    m.scale.setScalar(rand(0.45, 0.95));
     m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
     particles.push({
       mesh: m,
-      vx: rand(-spd, spd), vy: rand(0.05, spd * 1.5), vz: rand(-spd, spd),
-      rx: rand(-.18, .18), ry: rand(-.18, .18), rz: rand(-.18, .18),
-      life: rand(14, 28),
+      vx: rand(-spd * .8, spd * .8), vy: rand(0.08, spd * 1.1), vz: rand(-spd * .8, spd * .8),
+      rx: rand(-.2, .2), ry: rand(-.2, .2), rz: rand(-.2, .2),
+      life: rand(8, 14),
     });
     scene.add(m);
   }
@@ -1191,18 +1191,22 @@ function inheritedShotDirections() {
   const stage = weaponStageForRank(player.level);
   const dirs = [0];
   if (stage >= 2) dirs.push(-.07, .07);
-  if (stage >= 3) dirs.push(-.2, -.1, .1, .2);
-  if (stage >= 4) dirs.push(-.16, .16);
-  if (stage >= 5) dirs.push(-.22, -.11, .11, .22);
+  // Shotgun era: fan, not full-road carpet. Later stages add lanes gradually.
+  if (stage >= 3) dirs.push(-.16, .16);
+  if (stage >= 4) dirs.push(-.1, .1);
+  if (stage >= 5) dirs.push(-.22, .22);
+  if (stage >= 6) dirs.push(-.14, .14);
   const split = skillLevel(player.skills, "split");
-  for (let i = 1; i <= split; i++) dirs.push(-.04 * i, .04 * i);
-  if (player.spreadT > 0) dirs.push(-.28, -.24, .24, .28);
+  for (let i = 1; i <= Math.min(split, 2); i++) dirs.push(-.05 * i, .05 * i);
+  if (player.spreadT > 0) dirs.push(-.26, .26);
   return [...new Set(dirs.map(value => Math.round(value * 1000) / 1000))].sort((a, b) => a - b);
 }
 
 function effectiveBaseFireRate() {
-  const stage = weaponStageForRank(player.level);
-  return Math.min(...WEAPON_ORDER.slice(0, stage).map(id => WEAPON_DEFS[id].fireRate));
+  // Use the CURRENT weapon cadence only. Inheriting min(smg, shotgun…) made shotgun
+  // fire as fast as SMG and turned stage-3 into a lawnmower.
+  const weaponId = weaponForRank(player.level);
+  return (WEAPON_DEFS[weaponId] || WEAPON_DEFS.rifle).fireRate;
 }
 
 function effectiveFireInterval() {
@@ -1464,30 +1468,20 @@ function spawnEnemyGroup() {
   }
 }
 
-/* 敌人击碎:走对象池 + 严格上限，避免后期满屏碎片卡顿 */
+/* 击杀反馈:只用短命火花/光环，不再撒四面体碎片（会堆成满屏纸屑） */
 function shatterEnemy(e) {
   const ep = e.mesh.position;
-  const colors = e.type === "gunner" ? ["#704aa0", "#ff6685", "#2f3640"] :
-                 e.type === "fodder" ? ["#e0523d", "#ffb06a", "#2f3640"] :
-                 e.type === "shield" ? ["#607d8b", "#b0bec5", "#2f3640"] :
-                 e.type === "heavy"  ? ["#8e1b1b", "#5c1212", "#2f3640"] :
-                                       ["#d93030", "#2f3640", "#ffcc99"];
-  const want = e.type === "heavy" || e.elite ? 10 : e.type === "fodder" ? 5 : 7;
-  const room = Math.max(0, quality.particleCap - particles.length);
-  const n = Math.min(want, room, quality.level === "low" ? 5 : 10);
-  const hMul = e.type === "heavy" ? 1.35 : 1;
-  for (let i = 0; i < n; i++) {
-    const m = particleMeshPool.acquire();
-    m.visible = true;
-    m.material = pMat(colors[i % colors.length]);
-    m.position.set(ep.x + rand(-0.35, 0.35), rand(0.25, 1.35) * hMul, ep.z + rand(-0.28, 0.28));
-    m.scale.setScalar(rand(0.7, 1.7));
-    m.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
-    particles.push({
-      mesh: m, vx: rand(-0.26, 0.26), vy: rand(0.1, 0.32), vz: rand(-0.22, 0.22),
-      rx: rand(-.2, .2), ry: rand(-.2, .2), rz: rand(-.2, .2), life: rand(12, 22),
-    });
-    scene.add(m);
+  const tint =
+    e.type === "gunner" ? 0xd59cff :
+    e.type === "shield" ? 0x8dd8ed :
+    e.type === "heavy"  ? 0xff6b5c :
+    e.type === "fodder" ? 0xffb06a :
+    0xff8a70;
+  // Fodder: ring only. Elite/heavy: a few sparks. Never spawn long-lived debris meshes.
+  if (e.type === "heavy" || e.elite) {
+    addSparks(ep.x, 1.05, ep.z, tint, mobileDevice ? 4 : 7, .28);
+  } else if (e.type !== "fodder") {
+    addSparks(ep.x, 1.0, ep.z, tint, mobileDevice ? 2 : 4, .22);
   }
 }
 
@@ -1510,12 +1504,11 @@ function killEnemy(e) {
   const ep = e.mesh.position;
   grantHeroXp(killXpForEnemy(e), ep.x, ep.z + .4);
   shatterEnemy(e);
-  addImpactRing(ep.x, .08, ep.z, e.type === "shield" ? 0x8dd8ed : 0xff765f, e.type === "heavy" ? 2.6 : 1.5);
-  addSparks(ep.x, 1.1, ep.z, e.type === "shield" ? 0x9fe2f2 : 0xffb27a, e.type === "heavy" ? 10 : 5, .34);
+  addImpactRing(ep.x, .08, ep.z, e.type === "shield" ? 0x8dd8ed : 0xff765f, e.type === "heavy" ? 2.0 : 1.2);
   addFloatText(ep.x, 2.2, ep.z, "+" + (e.score + (e.elite ? 40 : 0)), e.elite ? "#d7a4ff" : "#ffd54f");
-  addShake(e.type === "heavy" || e.elite ? 0.16 : 0.07);
-  if (e.type === "heavy" || e.elite) triggerHitStop(2);
-  else if (critT > 0 && combo > 0 && combo % 5 === 0) triggerHitStop(2);
+  addShake(e.type === "heavy" || e.elite ? 0.12 : 0.04);
+  if (e.type === "heavy" || e.elite) triggerHitStop(1);
+  else if (critT > 0 && combo > 0 && combo % 5 === 0) triggerHitStop(1);
   combo++;
   comboTimer = 150 + skillLevel(player.skills, "combo") * 45;
   trySpawnMine(ep.x, ep.z);
@@ -2066,13 +2059,13 @@ function applyReward(r, x, z) {
     case "slow":     player.slowT = 420; break;                          // 7 秒减缓
     case "coin":     score += 150; break;
     case "bomb": {
-      addParticles(x, 1.5, z, "#ff9800", 40, 0.5);
       addImpactRing(x, .1, z, 0xff9800, 5.5);
+      addSparks(x, 1.2, z, 0xffb74d, mobileDevice ? 8 : 14, .4);
       addShake(0.4);
       for (const e of enemies) {
         e.dead = true;
         kills++; score += e.score;
-        shatterEnemy(e);
+        // No per-enemy shatter burst — one ring already sells the bomb.
       }
       addFloatText(player.x, 4, -6, "全屏轰炸!", "#ff9800");
       break;
@@ -2710,119 +2703,143 @@ function queueBossShot(kind, x, z, timer, extra) {
   boss.pendingShots.push({ kind, x, z, life: BOSS_FLIGHT[kind] || 50 });
 }
 
+/** Boss 招式必须留出可站立的安全带（约 2.2 宽），避免“全路封死无法躲”。 */
+function bossSafeLane(preferX = player.x) {
+  const lanes = [-5, -2.5, 0, 2.5, 5];
+  let best = lanes[0], bestD = Infinity;
+  for (const lane of lanes) {
+    const d = Math.abs(lane - preferX);
+    if (d < bestD) { bestD = d; best = lane; }
+  }
+  // Bias away from the player so the safe lane is readable as a dodge target.
+  const away = preferX >= 0 ? -1 : 1;
+  return clamp(best + away * (Math.random() < .55 ? 2.5 : 0), -5, 5);
+}
+
 function launchBossAttack() {
   if (!boss) return;
   const core = boss.mesh.userData.bossCore;
-  if (core) core.scale.setScalar(1.4);
-  addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, mobileDevice ? 12 : 20, .3);
+  if (core) core.scale.setScalar(1.35);
+  addParticles(boss.mesh.position.x, 3.4, boss.mesh.position.z + 1, boss.def.accent, mobileDevice ? 8 : 12, .24);
   addImpactRing(boss.mesh.position.x, .2, boss.mesh.position.z + 1, boss.def.accent, 4.2);
   addShake(.16);
   const phase = boss.phase || 1;
   const pattern = boss.attackIndex % 3;
   boss.pendingShots = [];
   const px = player.x;
+  const safe = bossSafeLane(px);
 
   switch (boss.def.theme) {
     case "tank": {
-      // 坦克: 宽幅双线重炮 + 大范围阵地炮弹
+      // Always leave the safe lane open; never double-beam + center shell that seals the road.
       if (pattern === 0) {
-        queueBossShot("beam", clamp(Math.round(px / 4) * 4, -4, 4), -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.7 });
-        if (phase >= 2) queueBossShot("beam", px > 0 ? -4 : 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.5 });
-        if (phase >= 3) queueBossShot("shell", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.3 });
-        addFloatText(0, 4, -10, phase >= 3 ? "罐头终焉压路!" : "铁罐头双线炮!", "#ffc75f", 5);
-      } else if (pattern === 1) {
-        for (let i = 0; i < 2 + phase; i++) {
-          queueBossShot("shell", clamp(px + rand(-5.5, 5.5), -6.2, 6.2), PLAYER_Z + rand(-1, 1.5), BOSS_WINDUP + 8 * i + BOSS_FLIGHT.shell, { radius: 1.9 + phase * .12 });
+        queueBossShot("beam", clamp(Math.round(px / 4) * 4, -4, 4), -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
+        if (phase >= 2 && Math.abs(safe) > 1.5) {
+          queueBossShot("shell", clamp(-safe, -5, 5), PLAYER_Z, BOSS_WINDUP + 10 + BOSS_FLIGHT.shell, { radius: 1.55 });
         }
-        addFloatText(0, 4, -8, "大佐阵地炮击!", "#ffb74d", 5);
+        addFloatText(safe, 4, -10, "压路炮 · 闪到空档!", "#ffc75f", 5);
+      } else if (pattern === 1) {
+        const shells = phase >= 3 ? 3 : 2;
+        for (let i = 0; i < shells; i++) {
+          let sx = clamp(px + rand(-4.5, 4.5), -5.5, 5.5);
+          if (Math.abs(sx - safe) < 2.2) sx = clamp(safe + (sx >= safe ? 2.6 : -2.6), -5.5, 5.5);
+          queueBossShot("shell", sx, PLAYER_Z + rand(-.8, 1.2), BOSS_WINDUP + 10 * i + BOSS_FLIGHT.shell, { radius: 1.55 + phase * .08 });
+        }
+        addFloatText(safe, 4, -8, "阵地炮 · 绿侧安全!", "#ffb74d", 5);
       } else {
-        queueBossShot("beam", -4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
-        queueBossShot("beam", 4, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.4 });
-        if (phase >= 2) queueBossShot("shell", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 2.0 });
-        addFloatText(0, 4, -8, "夹击压路 · 中间危险!", "#ffd06b", 5.1);
+        // Two outer beams; center is the safe corridor.
+        queueBossShot("beam", -4.2, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.25 });
+        queueBossShot("beam", 4.2, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.25 });
+        addFloatText(0, 4, -8, "夹击炮线 · 走中间!", "#ffd06b", 5.1);
       }
       break;
     }
     case "shield": {
-      // 铁饼队长: 正面冲撞 + 盾震波
       if (pattern === 0) {
-        queueBossShot("shock", clamp(px, -4, 4), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.6 + phase * .35 });
-        addFloatText(0, 4, -8, "铁饼冲撞 · 躲开正面!", "#8de8ff", 5.2);
+        queueBossShot("shock", clamp(px, -4, 4), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.0 + phase * .2 });
+        addFloatText(safe, 4, -8, "铁饼冲撞 · 闪左右!", "#8de8ff", 5.2);
       } else if (pattern === 1) {
-        queueBossShot("shock", -3.5, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
-        queueBossShot("shock", 3.5, PLAYER_Z, BOSS_WINDUP + 10 + BOSS_FLIGHT.shock, { halfWidth: 2.2 });
-        if (phase >= 3) queueBossShot("shock", 0, PLAYER_Z, BOSS_WINDUP + 18 + BOSS_FLIGHT.shock, { halfWidth: 2.0 });
-        addFloatText(0, 4, -8, "盾震波!", "#91efff", 5);
+        // Left then right waves with gap in the middle — never a third center seal.
+        queueBossShot("shock", -4.2, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 1.9 });
+        queueBossShot("shock", 4.2, PLAYER_Z, BOSS_WINDUP + 14 + BOSS_FLIGHT.shock, { halfWidth: 1.9 });
+        addFloatText(0, 4, -8, "盾震波 · 站中间空档!", "#91efff", 5);
       } else {
-        queueBossShot("shock", clamp(px, -5, 5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 3.5 });
-        if (phase >= 2) queueBossShot("shell", clamp(px + (px >= 0 ? -4 : 4), -6, 6), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shell, { radius: 1.6 });
-        addFloatText(0, 4, -8, "铁饼横扫!", "#a5f0ff", 5);
+        queueBossShot("shock", clamp(px, -3.5, 3.5), PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.shock, { halfWidth: 2.4 });
+        if (phase >= 2) {
+          const far = px >= 0 ? -4.5 : 4.5;
+          queueBossShot("shell", far, PLAYER_Z, BOSS_WINDUP + 8 + BOSS_FLIGHT.shell, { radius: 1.4 });
+        }
+        addFloatText(safe, 4, -8, "铁饼横扫 · 侧移!", "#a5f0ff", 5);
       }
       break;
     }
     case "sniper": {
-      // 红点幽灵: 红点锁定 + 安全点网格
       if (pattern === 0 || pattern === 2) {
-        const locks = phase >= 3 ? 3 : phase >= 2 ? 2 : 1;
+        // One tracking lock (two on phase 3) — never a wall of locks.
+        const locks = phase >= 3 ? 2 : 1;
         for (let i = 0; i < locks; i++) {
-          queueBossShot("lock", px + (i - (locks - 1) / 2) * 1.2, PLAYER_Z, BOSS_WINDUP + 6 * i + BOSS_FLIGHT.lock, { radius: 1.2 });
+          const lx = locks === 1 ? px : px + (i === 0 ? -.9 : .9);
+          queueBossShot("lock", lx, PLAYER_Z, BOSS_WINDUP + 8 * i + BOSS_FLIGHT.lock, { radius: 1.05 });
         }
-        addFloatText(0, 4, -10, locks > 1 ? "多重红点 · 持续走位!" : "红点锁定 · 快躲开!", "#ff8fb8", 5.2);
+        addFloatText(0, 4, -10, locks > 1 ? "双红点 · 侧移躲开!" : "红点锁定 · 快躲开!", "#ff8fb8", 5.2);
       } else {
-        const slots = [-6, -2, 2, 6];
-        const safe = slots[Math.floor(rand(0, slots.length))];
+        const slots = [-5.5, -2, 2, 5.5];
+        const safeSlot = slots.reduce((best, x) => Math.abs(x - safe) < Math.abs(best - safe) ? x : best, slots[0]);
         slots.forEach(x => {
-          if (x !== safe) queueBossShot("lock", x, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.lock, { radius: 1.15 });
+          if (x !== safeSlot) queueBossShot("lock", x, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.lock, { radius: 1.0 });
         });
-        addFloatText(safe, 4, -8, "安全节点在发光一侧!", "#ff6b9d", 5.2);
+        addFloatText(safeSlot, 4, -8, "安全节点在这边!", "#ff6b9d", 5.2);
       }
       break;
     }
     case "rocket": {
-      // 爆米花将军: 导弹雨 + 缺口
       if (pattern === 0) {
-        for (let i = 0; i < 3 + phase; i++) {
-          queueBossShot("rain", rand(-6.3, 6.3), PLAYER_Z + rand(-1.2, 2), BOSS_WINDUP + i * 7 + BOSS_FLIGHT.rain, { radius: 1.3 });
+        const rains = phase >= 3 ? 3 : 2;
+        for (let i = 0; i < rains; i++) {
+          let rx = rand(-5.5, 5.5);
+          if (Math.abs(rx - safe) < 2.0) rx = clamp(safe + (rx >= safe ? 2.4 : -2.4), -5.5, 5.5);
+          queueBossShot("rain", rx, PLAYER_Z + rand(-1, 1.2), BOSS_WINDUP + i * 9 + BOSS_FLIGHT.rain, { radius: 1.15 });
         }
-        addFloatText(0, 4, -8, "爆米花导弹雨!", "#ffad69", 5);
+        addFloatText(safe, 4, -8, "导弹雨 · 空档安全!", "#ffad69", 5);
       } else if (pattern === 1) {
-        const safe = clamp(px + rand(-1.5, 1.5), -4.5, 4.5);
-        queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.gap, { safeHalf: phase >= 3 ? 1.35 : 1.75 });
+        queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.gap, { safeHalf: phase >= 3 ? 1.7 : 2.1 });
         addFloatText(safe, 4, -8, "地毯炸 · 钻绿色缺口!", "#ffd06b", 5.3);
       } else {
-        for (let i = 0; i < 2 + phase; i++) queueBossShot("rain", clamp(px + rand(-4, 4), -6, 6), PLAYER_Z, BOSS_WINDUP + i * 5 + BOSS_FLIGHT.rain, { radius: 1.4 });
-        if (phase >= 2) {
-          const safe = px > 0 ? -3 : 3;
-          queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.gap, { safeHalf: 1.5 });
+        for (let i = 0; i < 2; i++) {
+          let rx = clamp(px + rand(-3.5, 3.5), -5.5, 5.5);
+          if (Math.abs(rx - safe) < 2.0) rx = clamp(safe + (i === 0 ? 2.5 : -2.5), -5.5, 5.5);
+          queueBossShot("rain", rx, PLAYER_Z, BOSS_WINDUP + i * 7 + BOSS_FLIGHT.rain, { radius: 1.2 });
         }
-        addFloatText(0, 4, -8, "将军齐射!", "#ff9d5c", 5);
+        if (phase >= 2) {
+          queueBossShot("gap", safe, PLAYER_Z, BOSS_WINDUP + 14 + BOSS_FLIGHT.gap, { safeHalf: 1.9 });
+        }
+        addFloatText(safe, 4, -8, "将军齐射 · 跟缺口!", "#ff9d5c", 5);
       }
       break;
     }
     default: {
-      // 能量: 固定切割光束 + 从中心扩散的能环
+      // 棱镜: one readable threat at a time + always a standable lane
       if (pattern === 0) {
-        queueBossShot("beam", px > 0 ? 3.5 : -3.5, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
-        if (phase >= 2) queueBossShot("beam", px > 0 ? -3.5 : 3.5, -12, BOSS_WINDUP + 8 + BOSS_FLIGHT.beam, { halfWidth: 1.35 });
-        if (phase >= 3) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.8 });
-        addFloatText(0, 4, -10, "棱镜光刀!", "#72f5ff", 5);
+        queueBossShot("beam", px > 0 ? 3.2 : -3.2, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.2 });
+        if (phase >= 3) queueBossShot("shell", clamp(-px, -4.5, 4.5), PLAYER_Z, BOSS_WINDUP + 12 + BOSS_FLIGHT.shell, { radius: 1.4 });
+        addFloatText(safe, 4, -10, "棱镜光刀 · 闪到空档!", "#72f5ff", 5);
       } else if (pattern === 1) {
-        queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.2 + phase * .35 });
-        if (phase >= 2) queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + 14 + BOSS_FLIGHT.ring, { radius: 3.4 });
-        addFloatText(0, 4, -8, "扩环封路 · 站到环外!", "#79fbff", 5.2);
+        // Single expanding ring — never two stacked rings that seal the whole road.
+        queueBossShot("ring", 0, PLAYER_Z, BOSS_WINDUP + BOSS_FLIGHT.ring, { radius: 2.0 + phase * .25 });
+        addFloatText(0, 4, -8, "扩环 · 站到环外或圆心!", "#79fbff", 5.2);
       } else {
-        [-5, 0, 5].forEach((x, i) => {
-          if (phase < 2 && x === 0) return;
-          queueBossShot("beam", x, -12, BOSS_WINDUP + i * 4 + BOSS_FLIGHT.beam, { halfWidth: 1.15 });
-        });
-        addFloatText(0, 4, -8, "棱镜栅栏!", "#5ee7ff", 5);
+        // Outer beams only; middle corridor is always open.
+        queueBossShot("beam", -4.8, -12, BOSS_WINDUP + BOSS_FLIGHT.beam, { halfWidth: 1.1 });
+        queueBossShot("beam", 4.8, -12, BOSS_WINDUP + 6 + BOSS_FLIGHT.beam, { halfWidth: 1.1 });
+        addFloatText(0, 4, -8, "棱镜栅栏 · 走中间!", "#5ee7ff", 5);
       }
     }
   }
 
   boss.windupT = BOSS_WINDUP;
   boss.attackIndex++;
-  boss.attackCd = Math.max(90, 200 - boss.number * 6 - (phase - 1) * 24);
+  // More recovery time between telegraphs so the safe lane is readable.
+  boss.attackCd = Math.max(110, 230 - boss.number * 5 - (phase - 1) * 18);
 }
 
 function hitByBossHazard(h, p) {
@@ -3349,21 +3366,22 @@ function update() {
     return false;
   });
 
-  /* 粒子 */
+  /* 粒子：落地或寿命到立刻回收，防止「死后纸屑」挂在画面上 */
   for (const p of particles) {
     p.mesh.position.x += p.vx;
     p.mesh.position.y += p.vy;
-    p.mesh.position.z += p.vz;
+    p.mesh.position.z += p.vz + worldSpeed * .35;
     p.mesh.rotation.x += p.rx || 0;
     p.mesh.rotation.y += p.ry || 0;
     p.mesh.rotation.z += p.rz || 0;
-    p.mesh.scale.multiplyScalar(.972);
-    p.vy -= 0.012;
-    p.vx *= .99; p.vz *= .99;
+    p.mesh.scale.multiplyScalar(.94);
+    p.vy -= 0.02;
+    p.vx *= .97; p.vz *= .97;
     p.life--;
+    if (p.mesh.position.y < 0) p.life = 0;
   }
   compactInPlace(particles, p => {
-    if (p.life > 0) return true;
+    if (p.life > 0 && p.mesh.scale.x > .08) return true;
     particleMeshPool.release(p.mesh);
     return false;
   });

@@ -24,7 +24,7 @@ export function detectQuality(mobile: boolean, lowPower: boolean, prefer: Qualit
     return {
       level: "low",
       pixelRatio: 1,
-      particleCap: 90,
+      particleCap: 48,
       rainCount: 42,
       bloom: false,
       dynamicShadows: false,
@@ -38,7 +38,7 @@ export function detectQuality(mobile: boolean, lowPower: boolean, prefer: Qualit
     return {
       level: "medium",
       pixelRatio: Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.5),
-      particleCap: mobile ? 120 : 180,
+      particleCap: mobile ? 64 : 96,
       rainCount: mobile ? 56 : 90,
       bloom: false,
       dynamicShadows: false,
@@ -51,7 +51,7 @@ export function detectQuality(mobile: boolean, lowPower: boolean, prefer: Qualit
   return {
     level: "high",
     pixelRatio: Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2),
-    particleCap: mobile ? 150 : 240,
+    particleCap: mobile ? 80 : 120,
     rainCount: mobile ? 76 : 128,
     bloom: true,
     dynamicShadows: !mobile,
